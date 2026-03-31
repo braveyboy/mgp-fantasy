@@ -1,1 +1,2 @@
-web: gunicorn app:app
+# MGP Fantasy League
+Live FPL draft league tracker.
