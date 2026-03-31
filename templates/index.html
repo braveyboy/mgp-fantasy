@@ -211,9 +211,9 @@ const STANDINGS_GW30={
   8:{p:30,w:21,d:1,l:8,f:1791,a:1548,pts:64},
 };
 const HISTORICAL={31:{1:26,2:49,3:40,4:44,5:57,6:46,7:51,8:54}};
-const FPL_CLUBS={1:"Arsenal",2:"Aston Villa",3:"Bournemouth",4:"Brentford",5:"Brighton",6:"Chelsea",7:"Crystal Palace",8:"Everton",9:"Fulham",12:"Liverpool",13:"Man City",14:"Man Utd",15:"Newcastle",16:"Nott'm Forest",18:"Spurs",19:"West Ham",20:"Wolves",21:"Leeds",22:"Sunderland"};
 
-let playerMap={},liveScores={},gkBest={},teamsWithGame=new Set(),teamsFinished=new Set();
+
+let playerMap={},liveScores={},gkBest={},teamsWithGame=new Set(),teamsFinished=new Set(),clubNameToId={};
 let currentGW=31,dataChecked=false,currentPage='matchups';
 
 function showPage(name,el){
@@ -234,7 +234,7 @@ function showPage(name,el){
 function bestXI(team){
   let gkPts=0,gkClub='';
   team.gk.forEach(cn=>{
-    const fid=parseInt(Object.entries(FPL_CLUBS).find(([,n])=>n===cn)?.[0]);
+    const fid=clubNameToId[cn];
     if(fid!==undefined&&(gkBest[fid]??-1)>gkPts){gkPts=gkBest[fid];gkClub=cn;}
   });
   const sc=id=>liveScores[id]??0;
@@ -366,7 +366,7 @@ async function loadAll(){
     const boot=await apiFetch('/api/bootstrap');
     const evCurrent=boot.events?.find(e=>e.is_current);const evPrev=boot.events?.find(e=>e.is_previous);const evNext=boot.events?.find(e=>e.is_next);const ev=evCurrent||(evNext&&!evCurrent?evPrev:null)||evNext;
     currentGW=ev?.id??31; dataChecked=ev?.data_checked??false;
-    boot.elements?.forEach(p=>{playerMap[p.id]={name:p.web_name,type:p.element_type,teamId:p.team,seasonPts:p.total_points??0};});
+    boot.teams?.forEach(t=>{const n=t.name;clubNameToId[n]=t.id;const s=t.short_name;clubNameToId[s]=t.id;});boot.elements?.forEach(p=>{playerMap[p.id]={name:p.web_name,type:p.element_type,teamId:p.team,seasonPts:p.total_points??0};});
     const gwFix=await apiFetch('/api/fixtures/'+currentGW);
     teamsWithGame=new Set(); teamsFinished=new Set();
     gwFix.forEach(f=>{teamsWithGame.add(f.team_h);teamsWithGame.add(f.team_a);if(f.finished||f.finished_provisional){teamsFinished.add(f.team_h);teamsFinished.add(f.team_a);}});
