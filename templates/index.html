@@ -247,10 +247,10 @@ function bestXI(team){
   const mandatory=[...sd.slice(0,3),...sm.slice(0,3),...sf.slice(0,1)];
   const usedIds=new Set(mandatory.map(p=>p.id));
   const flex=[...sd.slice(3),...sm.slice(3),...sf.slice(1)].filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
-  const xi=[gkEntry,...mandatory,...flex];
-  const xiIds=new Set(xi.filter(p=>p.id!=='gk').map(p=>p.id));
+  const posOrder={GK:0,DEF:1,MID:2,FWD:3};const xiUnsorted=[gkEntry,...mandatory,...flex];const xiIds=new Set(xiUnsorted.filter(p=>p.id!=="gk").map(p=>p.id));const xi=xiUnsorted.sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
+  
   const bench=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')].filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
-  const allOut=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')];
+  
   const remainingXI=xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length;
   return{total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gkPts,remainingXI};
 }
@@ -364,7 +364,7 @@ async function loadAll(){
   if(icon)icon.classList.add('spinning');
   try{
     const boot=await apiFetch('/api/bootstrap');
-    const ev=boot.events?.find(e=>e.is_current)||boot.events?.find(e=>e.is_next);
+    const evCurrent=boot.events?.find(e=>e.is_current);const evPrev=boot.events?.find(e=>e.is_previous);const evNext=boot.events?.find(e=>e.is_next);const ev=evCurrent||(evNext&&!evCurrent?evPrev:null)||evNext;
     currentGW=ev?.id??31; dataChecked=ev?.data_checked??false;
     boot.elements?.forEach(p=>{playerMap[p.id]={name:p.web_name,type:p.element_type,teamId:p.team,seasonPts:p.total_points??0};});
     const gwFix=await apiFetch('/api/fixtures/'+currentGW);
