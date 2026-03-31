@@ -1,36 +1,4 @@
-# MGP Fantasy League
-
-## Run locally (takes ~60 seconds to set up)
-
-```bash
-# 1. Install dependencies
-pip install flask flask-cors requests gunicorn
-
-# 2. Start the server
-python app.py
-
-# 3. Open in browser
-# http://localhost:5000
-```
-
-## Deploy to Render (free, permanent URL)
-
-1. Push this folder to a GitHub repo
-2. Go to render.com → New → Web Service
-3. Connect your GitHub repo
-4. Build command: `pip install -r requirements.txt`
-5. Start command: `gunicorn app:app`
-6. Click Deploy
-
-Your app will be live at `https://your-app-name.onrender.com`
-
-## File structure
-
-```
-mgp-fantasy/
-├── app.py              # Flask backend — proxies FPL API
-├── requirements.txt    # Python dependencies
-├── Procfile            # Render/Heroku start command
-└── templates/
-    └── index.html      # Frontend (all CSS + JS inline)
-```
+flask
+flask-cors
+requests
+gunicorn
