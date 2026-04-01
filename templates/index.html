@@ -86,7 +86,7 @@
   .pos-mid{background:var(--col-mid);}
   .pos-fwd{background:var(--col-fwd);}
   .player-name{font-size:11px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .player-pts{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--gold-light);flex-shrink:0;}
+  .player-pts{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--gold-light);flex-shrink:0;}.player-club{font-size:9px;opacity:.45;margin-left:1px;}.status-flag{font-size:11px;margin-left:3px;cursor:help;vertical-align:middle;}
   .bench-divider{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;text-align:center;padding:4px 0;margin:4px 0;border-top:1px dashed rgba(107,122,153,.2);}
   .meta-row{margin-top:18px;display:flex;flex-direction:column;gap:6px;align-items:center;}
   .refresh-bar{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;}
@@ -186,7 +186,7 @@
 const TEAMS=[
   {id:1,name:"The Legend of Porro and Yoro",short:"Porro & Yoro",manager:"Ritz & Shandler",gk:["Arsenal","Fulham"],def:[683,568,106,473,575,228,7],mid:[119,237,414,387,20,487,242],fwd:[430,283,691,671]},
   {id:2,name:"A Sarr is Born",short:"A Sarr is Born",manager:"Mindel",gk:["Man City","Man Utd"],def:[371,475,41,293,316,77,507],mid:[381,413,582,267,427,50,350],fwd:[249,178,136,808]},
-  {id:3,name:"Bread and Rutter",short:"Bread & Rutter",manager:"Nic & Tom",gk:["Brighton","Brighton"],def:[370,256,72,694,476,317,477],mid:[266,235,158,486,241,699,488],fwd:[661,654,311,100]},
+  {id:3,name:"Bread and Rutter",short:"Bread & Rutter",manager:"Nic & Tom",gk:["Brighton","Nott'm Forest"],def:[370,256,72,694,476,317,477],mid:[266,235,158,486,241,699,488],fwd:[661,654,311,100]},
   {id:4,name:"Iwobi Noni Kenobis",short:"Iwobi Noni",manager:"Jules",gk:["Everton","Crystal Palace"],def:[6,224,5,440,292,478,107],mid:[450,324,18,26,390,21,418],fwd:[31,215,785,338]},
   {id:5,name:"Ndiaaaye will always love Diouf",short:"Ndiaaaye",manager:"Brent & Josh",gk:["Brentford","Bournemouth"],def:[260,569,684,291,442,603,226],mid:[16,615,236,160,299,417,329],fwd:[681,97,337,526]},
   {id:6,name:"Muaniball",short:"Muaniball",manager:"Dean",gk:["Liverpool","Aston Villa"],def:[258,505,411,74,225,257,148],mid:[17,485,717,84,82,515,83],fwd:[596,666,310,726]},
@@ -212,13 +212,13 @@ const STANDINGS_GW30={
 };
 const HISTORICAL={31:{1:26,2:49,3:40,4:44,5:57,6:46,7:51,8:54}};
 
-// Runtime maps built from FPL bootstrap
-let playerMap={};     // fpl_id → {name, webName, type, teamId, teamShort, seasonPts}
-let liveScores={};    // fpl_id → pts this GW
-let gkScores={};      // fpl_team_id → array of {id, pts, name} for all GKs that played
+// Runtime state
+let playerMap={};      // id → {name, type, teamId, teamShort, seasonPts, status, news, chanceThis, chanceNext}
+let liveScores={};
+let gkScores={};       // fpl_team_id → [{id, pts, name}] sorted desc
 let teamsWithGame=new Set();
 let teamsFinished=new Set();
-let clubNameToId={};  // "Brentford" → 4  (built dynamically from boot.teams)
+let clubNameToId={};
 let currentGW=31, dataChecked=false, currentPage='matchups';
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
@@ -226,62 +226,102 @@ function showPage(name,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item,.bn-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  const names=['matchups','ladder','squads'];
-  const idx=names.indexOf(name);
+  const idx=['matchups','ladder','squads'].indexOf(name);
   if(idx>=0){document.querySelectorAll('.nav-item')[idx]?.classList.add('active');document.querySelectorAll('.bn-item')[idx]?.classList.add('active');}
   currentPage=name;
   if(name==='ladder')renderLadder();
   if(name==='squads')renderSquads();
 }
 
-// ── GK LOGIC ─────────────────────────────────────────────────────────────────
-// For each GK club, find the best-scoring keeper from that club this GW.
-// Returns {pts, name, clubName} - treats them like individual players.
-// If both keepers played (injury sub), add scores together per rules.
-function getGKScore(team) {
-  let bestPts = 0, bestName = '', bestClub = '';
-  team.gk.forEach(clubName => {
+// ── STATUS FLAG ───────────────────────────────────────────────────────────────
+// Returns a small inline flag with tooltip for injured/doubtful/suspended players
+function statusFlag(id) {
+  const p = playerMap[id];
+  if (!p) return '';
+  const s = p.status;
+  if (s === 'a' || !s) return ''; // available - no flag
+  let icon, color, tip;
+  if (s === 'i') { icon='🚑'; color='#e07060'; }       // injured
+  else if (s === 'd') { icon='⚠️'; color='#e2c07a'; }  // doubtful
+  else if (s === 's') { icon='🟥'; color='#e07060'; }  // suspended
+  else if (s === 'u') { icon='❌'; color='#6b7a99'; }  // unavailable
+  else return '';
+  // Build tooltip text from news + chance
+  let tipText = p.news || '';
+  if (p.chanceThis !== null && p.chanceThis !== undefined) tipText = p.chanceThis+'% chance · '+tipText;
+  // Clean up "View player information" suffix
+  tipText = tipText.replace(/\.?\s*View player information\.?/gi,'').trim();
+  return `<span class="status-flag" style="color:${color}" title="${tipText.replace(/"/g,'&quot;')}">${icon}</span>`;
+}
+
+// ── GK LOGIC ──────────────────────────────────────────────────────────────────
+function getGKResult(team) {
+  // Returns {pts, startingName, bench: {name, pts, clubName}}
+  // Starting = best scoring club's best/combined keeper
+  // Bench = other club's keeper (for display as bench)
+  const results = team.gk.map(clubName => {
     const fid = clubNameToId[clubName];
-    if (fid === undefined) return;
-    const clubGKs = gkScores[fid] || [];
-    if (clubGKs.length === 0) return;
-    let clubPts, clubName2;
+    const clubGKs = (fid !== undefined ? gkScores[fid] : null) || [];
+    let pts = 0, name = clubName + ' GK';
     if (clubGKs.length >= 2 && clubGKs[0].pts > 0 && clubGKs[1].pts > 0) {
-      // Both played (injury sub scenario) - combine scores
-      clubPts = clubGKs.reduce((s,g)=>s+g.pts, 0);
-      clubName2 = clubGKs.map(g=>g.name).join('+');
-    } else {
-      // Take best
-      const best = clubGKs.reduce((a,b)=>a.pts>=b.pts?a:b);
-      clubPts = best.pts;
-      clubName2 = best.name;
+      // Both played - injury sub rule, combine
+      pts = clubGKs.reduce((s,g)=>s+g.pts,0);
+      name = clubGKs.map(g=>g.name).join('+');
+    } else if (clubGKs.length > 0) {
+      pts = clubGKs[0].pts;
+      name = clubGKs[0].name;
     }
-    if (clubPts > bestPts) { bestPts = clubPts; bestName = clubName2; bestClub = clubName; }
+    return { clubName, fid, pts, name, clubGKs };
   });
-  return { pts: bestPts, name: bestName || (team.gk[0]+' GK'), club: bestClub };
+
+  // Pick best club as starting, other as bench
+  results.sort((a,b) => b.pts - a.pts);
+  const starter = results[0];
+  const benchClub = results[1] || null;
+
+  // For bench display: show best player name from bench club
+  let benchName = benchClub ? benchClub.name : '';
+  let benchPts = benchClub ? benchClub.pts : 0;
+  // statusFlag for bench GK
+  let benchStatusId = null;
+  if (benchClub && benchClub.clubGKs.length > 0) benchStatusId = benchClub.clubGKs[0].id;
+
+  // statusFlag for starting GK
+  let startStatusId = starter.clubGKs.length > 0 ? starter.clubGKs[0].id : null;
+
+  return {
+    pts: starter.pts,
+    name: starter.name,
+    clubName: starter.clubName,
+    statusId: startStatusId,
+    bench: benchClub ? {
+      name: benchName,
+      pts: benchPts,
+      clubName: benchClub.clubName,
+      statusId: benchStatusId,
+    } : null,
+  };
 }
 
 // ── BEST XI ENGINE ────────────────────────────────────────────────────────────
 function bestXI(team) {
-  const gk = getGKScore(team);
+  const gk = getGKResult(team);
   const sc = id => liveScores[id] ?? 0;
-  const hasGame = id => { const p=playerMap[id]; return p ? teamsWithGame.has(p.teamId) : false; };
-  const played  = id => { const p=playerMap[id]; return sc(id)>0 || (p && teamsFinished.has(p.teamId)); };
-  const teamShort = id => playerMap[id]?.teamShort ?? '';
+  const hasGame = id => { const p=playerMap[id]; return p?teamsWithGame.has(p.teamId):false; };
+  const played  = id => { const p=playerMap[id]; return sc(id)>0||(p&&teamsFinished.has(p.teamId)); };
   const mk = (ids,pos) => ids.map(id => ({
     id, pts:sc(id), pos,
-    name: playerMap[id]?.name ?? ('#'+id),
-    club: teamShort(id),
-    hasGame: hasGame(id),
-    played: played(id),
-    seasonPts: playerMap[id]?.seasonPts ?? 0,
+    name:playerMap[id]?.name??('#'+id),
+    club:playerMap[id]?.teamShort??'',
+    hasGame:hasGame(id), played:played(id),
+    seasonPts:playerMap[id]?.seasonPts??0,
   }));
 
-  const sort = arr => [...arr].sort((a,b) => b.pts - a.pts);
+  const sort = arr => [...arr].sort((a,b)=>b.pts-a.pts);
   const sd=sort(mk(team.def,'DEF')), sm=sort(mk(team.mid,'MID')), sf=sort(mk(team.fwd,'FWD'));
 
-  const gkEntry = { id:'gk', pts:gk.pts, pos:'GK', name:gk.name, club:'', hasGame:false, played:true, seasonPts:0 };
-  const mandatory = [...sd.slice(0,3), ...sm.slice(0,3), ...sf.slice(0,1)];
+  const gkEntry = {id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:'',hasGame:false,played:true,seasonPts:0};
+  const mandatory = [...sd.slice(0,3),...sm.slice(0,3),...sf.slice(0,1)];
   const usedIds = new Set(mandatory.map(p=>p.id));
   const flex = [...sd.slice(3),...sm.slice(3),...sf.slice(1)]
     .filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
@@ -289,26 +329,29 @@ function bestXI(team) {
   const posOrder = {GK:0,DEF:1,MID:2,FWD:3};
   const xiUnsorted = [gkEntry,...mandatory,...flex];
   const xiIds = new Set(xiUnsorted.filter(p=>p.id!=='gk').map(p=>p.id));
-  const xi = xiUnsorted.sort((a,b) => posOrder[a.pos]!==posOrder[b.pos] ? posOrder[a.pos]-posOrder[b.pos] : b.pts-a.pts);
+  const xi = [...xiUnsorted].sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
   const bench = [...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')]
     .filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
 
   const remainingXI = xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length;
-  return { total:xi.reduce((s,p)=>s+p.pts,0), xi, bench, gkPts:gk.pts, remainingXI };
+  return {total:xi.reduce((s,p)=>s+p.pts,0), xi, bench, gk, remainingXI};
+}
+
+// ── PLAYER NAME WITH FLAG ─────────────────────────────────────────────────────
+function pName(p) {
+  if (p.id==='gk') return p.name;
+  const club = p.club ? ` <span class="player-club">(${p.club})</span>` : '';
+  const flag = statusFlag(p.id);
+  return `${p.name}${club}${flag}`;
 }
 
 // ── RENDER MATCHUPS ───────────────────────────────────────────────────────────
-function pName(p) {
-  // Display name with club abbreviation: "Tarkowski (BRE)"
-  if (p.id==='gk') return p.name;
-  return p.club ? `${p.name} <span style="font-size:9px;opacity:.5">(${p.club})</span>` : p.name;
-}
-
 function renderMatchups(){
   const fixtures=FIXTURES[currentGW];
   if(!fixtures){document.getElementById('matchupsBody').innerHTML='<div class="error-state">No fixtures for GW'+currentGW+'</div>';return;}
   const posC={GK:'pos-gk',DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
   const isFinals=currentGW>=36;
+
   const html=fixtures.map((m,i)=>{
     const home=TEAMS.find(t=>t.id===m.home), away=TEAMS.find(t=>t.id===m.away);
     const hs=bestXI(home), as=bestXI(away);
@@ -320,16 +363,35 @@ function renderMatchups(){
     const hRem=hs.remainingXI>0?`<span class="remaining">${hs.remainingXI} to play</span>`:'<span>XI complete</span>';
     const aRem=as.remainingXI>0?`<span class="remaining">${as.remainingXI} to play</span>`:'<span>XI complete</span>';
 
-    const mkTeamDetail=(t,r)=>{
-      const xiR=r.xi.map(p=>`<div class="player-row ${!p.played&&p.hasGame?'not-played':''}">
+    const mkRow = (p, isBench=false) => {
+      const notYet = !p.played && p.hasGame && p.id !== 'gk';
+      const flag = p.id !== 'gk' ? statusFlag(p.id) : '';
+      const club = p.id !== 'gk' && p.club ? ` <span class="player-club">(${p.club})</span>` : '';
+      return `<div class="player-row ${isBench?'bench':''} ${notYet?'not-played':''}">
         <span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span>
-        <span class="player-name">${pName(p)}</span>
-        <span class="player-pts">${p.pts}</span></div>`).join('');
-      const bR=r.bench.slice(0,5).map(p=>`<div class="player-row bench">
-        <span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span>
-        <span class="player-name">${pName(p)}</span>
-        <span class="player-pts">${p.pts}</span></div>`).join('');
-      return `<div class="detail-team-header">${t.short} · ${r.total}pts</div>${xiR}<div class="bench-divider">Bench</div>${bR}`;
+        <span class="player-name">${p.name}${club}${flag}</span>
+        <span class="player-pts">${p.pts}</span>
+      </div>`;
+    };
+
+    const mkGKBenchRow = (gkBench) => {
+      if (!gkBench) return '';
+      const flag = gkBench.statusId ? statusFlag(gkBench.statusId) : '';
+      return `<div class="player-row bench">
+        <span class="pos-tag pos-gk">GK</span>
+        <span class="player-name">${gkBench.name} <span class="player-club">(${gkBench.clubName})</span>${flag}</span>
+        <span class="player-pts">${gkBench.pts}</span>
+      </div>`;
+    };
+
+    const mkTeamDetail = (t,r) => {
+      const xiRows = r.xi.map(p => mkRow(p)).join('');
+      const gkBenchRow = mkGKBenchRow(r.gk.bench);
+      const outfieldBench = r.bench.slice(0,4).map(p=>mkRow(p,true)).join('');
+      return `<div class="detail-team-header">${t.short} · ${r.total}pts</div>
+        ${xiRows}
+        <div class="bench-divider">Bench</div>
+        ${gkBenchRow}${outfieldBench}`;
     };
 
     return `<div class="matchup-card" id="${cid}">
@@ -355,13 +417,16 @@ function renderMatchups(){
         </div>
       </div>
       <div class="card-detail" id="detail-${cid}">
-        <div class="detail-inner"><div class="detail-cols">
-          <div>${mkTeamDetail(home,hs)}</div>
-          <div>${mkTeamDetail(away,as)}</div>
-        </div></div>
+        <div class="detail-inner">
+          <div class="detail-cols">
+            <div>${mkTeamDetail(home,hs)}</div>
+            <div>${mkTeamDetail(away,as)}</div>
+          </div>
+        </div>
       </div>
     </div>`;
   }).join('');
+
   document.getElementById('matchupsBody').innerHTML='<div class="matchups-grid">'+html+'</div>';
 }
 
@@ -412,54 +477,52 @@ function renderLadder(){
 // ── RENDER SQUADS ─────────────────────────────────────────────────────────────
 function renderSquads(){
   const posC={GK:'pos-gk',DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
+
   const html=TEAMS.map(team=>{
     const result=bestXI(team);
     const xiIds=new Set(result.xi.filter(p=>p.id!=='gk').map(p=>p.id));
+    const startingClub = result.gk.clubName;
 
-    // GK rows — show each GK club as individual row, sorted by season pts
-    const gk = getGKScore(team);
+    // GK rows — show club name (not keeper name), sorted so starting GK club first
     const gkRows = team.gk.map(clubName => {
+      const isStarting = clubName === startingClub;
+      // Find best keeper in this club for status flag
       const fid = clubNameToId[clubName];
-      const clubGKs = (gkScores[fid]||[]);
-      // Find best keeper for display — use highest season pts if available
-      const bestGK = clubGKs.length > 0
-        ? clubGKs.reduce((a,b) => (playerMap[b.id]?.seasonPts??0) > (playerMap[a.id]?.seasonPts??0) ? b : a)
-        : null;
-      const sP = bestGK ? (playerMap[bestGK.id]?.seasonPts??0) : 0;
-      const displayName = bestGK ? (playerMap[bestGK.id]?.name ?? clubName+' GK') : (clubName+' GK');
-      const inXI = gk.club === clubName;
-      return `<div class="squad-player-row ${inXI?'in-xi':'on-bench'}">
+      const clubGKs = (fid !== undefined ? gkScores[fid] : null) || [];
+      const statusId = clubGKs.length > 0 ? clubGKs[0].id : null;
+      const flag = statusId ? statusFlag(statusId) : '';
+      return `<div class="squad-player-row ${isStarting?'in-xi':'on-bench'}">
         <div style="display:flex;align-items:center;gap:6px">
           <span class="pos-tag pos-gk">GK</span>
-          <span class="squad-player-name">${displayName} <span style="font-size:9px;opacity:.45">(${clubName})</span></span>
-        </div>
-        <div class="squad-player-right">
-          <span class="squad-season-pts">${sP} pts</span>
+          <span class="squad-player-name">${clubName}${flag}</span>
         </div>
       </div>`;
+    }).sort((a,b) => {
+      // Starting club row first
+      return a.includes('in-xi') ? -1 : 1;
     }).join('');
 
-    // Outfield groups — sorted by season pts, no GW score shown
+    // Outfield groups — sorted by season pts descending, no GW score
     const mkGroup=(ids,pos,label)=>{
-      const players = ids.map(id => ({
-        id,
-        name: playerMap[id]?.name ?? ('#'+id),
-        club: playerMap[id]?.teamShort ?? '',
-        sP: playerMap[id]?.seasonPts ?? 0,
-        inXI: xiIds.has(id),
-      })).sort((a,b) => b.sP - a.sP);
+      const players = ids.map(id=>({
+        id, inXI:xiIds.has(id),
+        name:playerMap[id]?.name??('#'+id),
+        club:playerMap[id]?.teamShort??'',
+        sP:playerMap[id]?.seasonPts??0,
+      })).sort((a,b)=>b.sP-a.sP);
 
-      const rows = players.map(p =>
-        `<div class="squad-player-row ${p.inXI?'in-xi':'on-bench'}">
+      const rows = players.map(p=>{
+        const flag = statusFlag(p.id);
+        return `<div class="squad-player-row ${p.inXI?'in-xi':'on-bench'}">
           <div style="display:flex;align-items:center;gap:6px">
             <span class="pos-tag ${posC[pos]}">${pos}</span>
-            <span class="squad-player-name">${p.name} <span style="font-size:9px;opacity:.45">(${p.club})</span></span>
+            <span class="squad-player-name">${p.name} <span class="player-club">(${p.club})</span>${flag}</span>
           </div>
           <div class="squad-player-right">
             <span class="squad-season-pts">${p.sP} pts</span>
           </div>
-        </div>`
-      ).join('');
+        </div>`;
+      }).join('');
       return `<div class="squad-pos-group"><div class="squad-pos-label">${label}</div>${rows}</div>`;
     };
 
@@ -482,7 +545,7 @@ function renderSquads(){
   document.getElementById('squadsBody').innerHTML=html;
 }
 
-// ── API ───────────────────────────────────────────────────────────────────────
+// ── API & LOAD ────────────────────────────────────────────────────────────────
 async function apiFetch(p){const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();}
 
 function updateHeader(){
@@ -499,36 +562,37 @@ async function loadAll(){
   try{
     const boot=await apiFetch('/api/bootstrap');
 
-    // GW detection: prefer is_current; if between GWs use is_previous
+    // GW: prefer current; between GWs use previous
     const evCurrent=boot.events?.find(e=>e.is_current);
     const evPrev=boot.events?.find(e=>e.is_previous);
     const evNext=boot.events?.find(e=>e.is_next);
-    const ev = evCurrent || (evNext && !evCurrent ? evPrev : null) || evNext;
+    const ev=evCurrent||(evNext&&!evCurrent?evPrev:null)||evNext;
     currentGW=ev?.id??31; dataChecked=ev?.data_checked??false;
 
-    // Build club name → FPL team ID map dynamically
+    // Dynamic club name → ID map
     clubNameToId={};
-    boot.teams?.forEach(t=>{
-      clubNameToId[t.name]=t.id;
-      clubNameToId[t.short_name]=t.id;
-    });
+    boot.teams?.forEach(t=>{clubNameToId[t.name]=t.id;clubNameToId[t.short_name]=t.id;});
 
-    // Build player map with team short name
+    // Player map with status info
     const teamShortMap={};
-    boot.teams?.forEach(t=>{ teamShortMap[t.id]=t.short_name; });
+    boot.teams?.forEach(t=>{teamShortMap[t.id]=t.short_name;});
     boot.elements?.forEach(p=>{
       playerMap[p.id]={
         name:p.web_name, type:p.element_type, teamId:p.team,
-        teamShort: teamShortMap[p.team]??'',
-        seasonPts:p.total_points??0
+        teamShort:teamShortMap[p.team]??'',
+        seasonPts:p.total_points??0,
+        status:p.status??'a',
+        news:p.news??'',
+        chanceThis:p.chance_of_playing_this_round,
+        chanceNext:p.chance_of_playing_next_round,
       };
     });
 
-    // Fixture data for this GW
+    // GW fixture data
     const gwFix=await apiFetch('/api/fixtures/'+currentGW);
     teamsWithGame=new Set(); teamsFinished=new Set();
     gwFix.forEach(f=>{
-      teamsWithGame.add(f.team_h); teamsWithGame.add(f.team_a);
+      teamsWithGame.add(f.team_h);teamsWithGame.add(f.team_a);
       if(f.finished||f.finished_provisional){teamsFinished.add(f.team_h);teamsFinished.add(f.team_a);}
     });
 
@@ -541,10 +605,8 @@ async function loadAll(){
       liveScores[e.id]=pts;
       const p=playerMap[e.id];
       if(p?.type===1){
-        // Build per-club GK score list (handles injury sub rule)
         if(!gkScores[p.teamId]) gkScores[p.teamId]=[];
-        gkScores[p.teamId].push({id:e.id, pts, name:p.name});
-        // Sort descending so best is first
+        gkScores[p.teamId].push({id:e.id,pts,name:p.name});
         gkScores[p.teamId].sort((a,b)=>b.pts-a.pts);
       }
     });
