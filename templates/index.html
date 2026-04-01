@@ -127,6 +127,13 @@
   .squad-season-pts{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;}
   .squad-gw-pts{font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--gold-light);}
   .squad-player-row.on-bench .squad-gw-pts{color:var(--muted);}
+
+  .gw-nav{display:flex;align-items:center;gap:0;background:var(--navy-light);border:1px solid var(--border-hi);border-radius:20px;overflow:hidden;flex-shrink:0;}
+  .gw-nav-btn{background:none;border:none;color:var(--muted);font-size:16px;padding:4px 10px;cursor:pointer;transition:color .2s,background .2s;line-height:1;}
+  .gw-nav-btn:hover{color:var(--gold);background:rgba(200,164,90,.08);}
+  .gw-nav-btn:disabled{opacity:.25;cursor:default;}
+  .gw-nav-label{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--gold);padding:0 4px;min-width:52px;text-align:center;line-height:1;}
+  .gw-nav-sub{font-size:8px;color:var(--muted);text-align:center;letter-spacing:1px;text-transform:uppercase;line-height:1;padding-bottom:3px;}
   .bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:rgba(10,22,40,.97);backdrop-filter:blur(16px);border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:8px 0 env(safe-area-inset-bottom,8px);}
   .bn-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 16px;cursor:pointer;color:var(--muted);transition:color .2s;}
   .bn-item.active{color:var(--gold);}
@@ -145,7 +152,14 @@
         <span class="logo-sub">Morten Gamst Pedersen League</span>
       </div>
     </div>
-    <div class="gw-pill"><span class="label">GW</span><span class="num" id="gwNum">—</span></div>
+    <div class="gw-nav">
+      <button class="gw-nav-btn" id="gwPrev" onclick="changeGW(-1)" disabled>‹</button>
+      <div>
+        <div class="gw-nav-label" id="gwNum">—</div>
+        <div class="gw-nav-sub" id="gwSubLabel">loading</div>
+      </div>
+      <button class="gw-nav-btn" id="gwNext" onclick="changeGW(1)" disabled>›</button>
+    </div>
   </div>
 </header>
 <nav>
@@ -213,13 +227,22 @@ const STANDINGS_GW30={
 const HISTORICAL={31:{1:26,2:49,3:40,4:44,5:57,6:46,7:51,8:54}};
 
 // Runtime state
-let playerMap={};      // id → {name, type, teamId, teamShort, seasonPts, status, news, chanceThis, chanceNext}
+let playerMap={};
 let liveScores={};
-let gkScores={};       // fpl_team_id → [{id, pts, name}] sorted desc
+let gkScores={};
 let teamsWithGame=new Set();
 let teamsFinished=new Set();
 let clubNameToId={};
-let currentGW=31, dataChecked=false, currentPage='matchups';
+
+// GW navigation state
+let defaultGW=31;      // the GW the app auto-selected on load
+let selectedGW=31;     // the GW currently being viewed
+let minGW=1;
+let maxGW=38;
+let gwEvents={};       // gw_id → event object from bootstrap
+let dataChecked=false;
+let currentPage='matchups';
+let gwCache={};        // gw_id → {liveScores, gkScores, teamsWithGame, teamsFinished}
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
 function showPage(name,el){
@@ -233,200 +256,196 @@ function showPage(name,el){
   if(name==='squads')renderSquads();
 }
 
+// ── GW NAVIGATION ─────────────────────────────────────────────────────────────
+async function changeGW(delta){
+  const target=selectedGW+delta;
+  if(target<minGW||target>maxGW)return;
+  selectedGW=target;
+  await loadGWData(selectedGW);
+  updateGWNav();
+  renderMatchups();
+  if(currentPage==='ladder')renderLadder();
+  if(currentPage==='squads')renderSquads();
+}
+
+function updateGWNav(){
+  document.getElementById('gwNum').textContent='GW'+selectedGW;
+  const ev=gwEvents[selectedGW];
+  const isDefault=selectedGW===defaultGW;
+  let sub='';
+  if(ev){
+    if(ev.is_current) sub=isDefault?'LIVE':'current';
+    else if(ev.finished) sub='final';
+    else if(ev.is_next) sub='upcoming';
+    else sub='';
+  }
+  if(selectedGW===defaultGW && !sub) sub='latest';
+  document.getElementById('gwSubLabel').textContent=sub;
+  document.getElementById('gwPrev').disabled=selectedGW<=minGW;
+  document.getElementById('gwNext').disabled=selectedGW>=maxGW;
+  const dc=gwEvents[selectedGW]?.data_checked??false;
+  dataChecked=dc;
+  const badge=document.getElementById('bonusBadge');
+  if(badge){
+    badge.className=dc?'bonus-badge badge-confirmed':'bonus-badge badge-pending';
+    badge.innerHTML=dc?'<div class="pulse-dot"></div><span>Bonus Confirmed</span>':'<div class="pulse-dot"></div><span>Bonus Pending</span>';
+  }
+  document.getElementById('sectionTitle').textContent=`GW${selectedGW} Fixtures`;
+}
+
+// ── LOAD GW DATA (with cache) ─────────────────────────────────────────────────
+async function loadGWData(gw){
+  if(gwCache[gw]){
+    // Use cached data
+    const c=gwCache[gw];
+    liveScores=c.liveScores;
+    gkScores=c.gkScores;
+    teamsWithGame=c.teamsWithGame;
+    teamsFinished=c.teamsFinished;
+    return;
+  }
+
+  // Fetch fixtures for this GW to know which teams play
+  const [gwFix, live] = await Promise.all([
+    apiFetch('/api/fixtures/'+gw),
+    apiFetch('/api/live/'+gw)
+  ]);
+
+  const twg=new Set(), tf=new Set();
+  gwFix.forEach(f=>{
+    twg.add(f.team_h); twg.add(f.team_a);
+    if(f.finished||f.finished_provisional){tf.add(f.team_h);tf.add(f.team_a);}
+  });
+
+  const ls={}, gks={};
+  live.elements?.forEach(e=>{
+    const pts=e.stats?.total_points??0;
+    ls[e.id]=pts;
+    const p=playerMap[e.id];
+    if(p?.type===1){
+      if(!gks[p.teamId])gks[p.teamId]=[];
+      gks[p.teamId].push({id:e.id,pts,name:p.name});
+      gks[p.teamId].sort((a,b)=>b.pts-a.pts);
+    }
+  });
+
+  gwCache[gw]={liveScores:ls,gkScores:gks,teamsWithGame:twg,teamsFinished:tf};
+  liveScores=ls; gkScores=gks; teamsWithGame=twg; teamsFinished=tf;
+}
+
 // ── STATUS FLAG ───────────────────────────────────────────────────────────────
-// Returns a small inline flag with tooltip for injured/doubtful/suspended players
-function statusFlag(id) {
-  const p = playerMap[id];
-  if (!p) return '';
-  const s = p.status;
-  if (s === 'a' || !s) return ''; // available - no flag
-  let icon, color, tip;
-  if (s === 'i') { icon='🚑'; color='#e07060'; }       // injured
-  else if (s === 'd') { icon='⚠️'; color='#e2c07a'; }  // doubtful
-  else if (s === 's') { icon='🟥'; color='#e07060'; }  // suspended
-  else if (s === 'u') { icon='❌'; color='#6b7a99'; }  // unavailable
-  else return '';
-  // Build tooltip text from news + chance
-  let tipText = p.news || '';
-  if (p.chanceThis !== null && p.chanceThis !== undefined) tipText = p.chanceThis+'% chance · '+tipText;
-  // Clean up "View player information" suffix
-  tipText = tipText.replace(/\.?\s*View player information\.?/gi,'').trim();
-  return `<span class="status-flag" style="color:${color}" title="${tipText.replace(/"/g,'&quot;')}">${icon}</span>`;
+function statusFlag(id){
+  const p=playerMap[id];
+  if(!p)return'';
+  const s=p.status;
+  if(s==='a'||!s)return'';
+  let icon,color;
+  if(s==='i'){icon='🚑';color='#e07060';}
+  else if(s==='d'){icon='⚠️';color='#e2c07a';}
+  else if(s==='s'){icon='🟥';color='#e07060';}
+  else if(s==='u'){icon='❌';color='#6b7a99';}
+  else return'';
+  let tip=(p.news||'').replace(/\.?\s*View player information\.?/gi,'').trim();
+  if(p.chanceThis!=null)tip=p.chanceThis+'% chance · '+tip;
+  return`<span class="status-flag" style="color:${color}" title="${tip.replace(/"/g,'&quot;')}">${icon}</span>`;
 }
 
 // ── GK LOGIC ──────────────────────────────────────────────────────────────────
-function getGKResult(team) {
-  // Returns {pts, startingName, bench: {name, pts, clubName}}
-  // Starting = best scoring club's best/combined keeper
-  // Bench = other club's keeper (for display as bench)
-  const results = team.gk.map(clubName => {
-    const fid = clubNameToId[clubName];
-    const clubGKs = (fid !== undefined ? gkScores[fid] : null) || [];
-    let pts = 0, name = clubName + ' GK';
-    if (clubGKs.length >= 2 && clubGKs[0].pts > 0 && clubGKs[1].pts > 0) {
-      // Both played - injury sub rule, combine
-      pts = clubGKs.reduce((s,g)=>s+g.pts,0);
-      name = clubGKs.map(g=>g.name).join('+');
-    } else if (clubGKs.length > 0) {
-      pts = clubGKs[0].pts;
-      name = clubGKs[0].name;
-    }
-    return { clubName, fid, pts, name, clubGKs };
+function getGKResult(team){
+  const results=team.gk.map(clubName=>{
+    const fid=clubNameToId[clubName];
+    const clubGKs=(fid!==undefined?gkScores[fid]:null)||[];
+    let pts=0,name=clubName+' GK';
+    if(clubGKs.length>=2&&clubGKs[0].pts>0&&clubGKs[1].pts>0){
+      pts=clubGKs.reduce((s,g)=>s+g.pts,0);
+      name=clubGKs.map(g=>g.name).join('+');
+    }else if(clubGKs.length>0){pts=clubGKs[0].pts;name=clubGKs[0].name;}
+    return{clubName,fid,pts,name,clubGKs};
   });
-
-  // Pick best club as starting, other as bench
-  results.sort((a,b) => b.pts - a.pts);
-  const starter = results[0];
-  const benchClub = results[1] || null;
-
-  // For bench display: show best player name from bench club
-  let benchName = benchClub ? benchClub.name : '';
-  let benchPts = benchClub ? benchClub.pts : 0;
-  // statusFlag for bench GK
-  let benchStatusId = null;
-  if (benchClub && benchClub.clubGKs.length > 0) benchStatusId = benchClub.clubGKs[0].id;
-
-  // statusFlag for starting GK
-  let startStatusId = starter.clubGKs.length > 0 ? starter.clubGKs[0].id : null;
-
-  return {
-    pts: starter.pts,
-    name: starter.name,
-    clubName: starter.clubName,
-    statusId: startStatusId,
-    bench: benchClub ? {
-      name: benchName,
-      pts: benchPts,
-      clubName: benchClub.clubName,
-      statusId: benchStatusId,
-    } : null,
+  results.sort((a,b)=>b.pts-a.pts);
+  const starter=results[0];
+  const benchClub=results[1]||null;
+  return{
+    pts:starter.pts,name:starter.name,clubName:starter.clubName,
+    statusId:starter.clubGKs[0]?.id??null,
+    bench:benchClub?{name:benchClub.name,pts:benchClub.pts,clubName:benchClub.clubName,statusId:benchClub.clubGKs[0]?.id??null}:null,
   };
 }
 
-// ── BEST XI ENGINE ────────────────────────────────────────────────────────────
-function bestXI(team) {
-  const gk = getGKResult(team);
-  const sc = id => liveScores[id] ?? 0;
-  const hasGame = id => { const p=playerMap[id]; return p?teamsWithGame.has(p.teamId):false; };
-  const played  = id => { const p=playerMap[id]; return sc(id)>0||(p&&teamsFinished.has(p.teamId)); };
-  const mk = (ids,pos) => ids.map(id => ({
-    id, pts:sc(id), pos,
-    name:playerMap[id]?.name??('#'+id),
-    club:playerMap[id]?.teamShort??'',
-    hasGame:hasGame(id), played:played(id),
-    seasonPts:playerMap[id]?.seasonPts??0,
-  }));
-
-  const sort = arr => [...arr].sort((a,b)=>b.pts-a.pts);
-  const sd=sort(mk(team.def,'DEF')), sm=sort(mk(team.mid,'MID')), sf=sort(mk(team.fwd,'FWD'));
-
-  const gkEntry = {id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:'',hasGame:false,played:true,seasonPts:0};
-  const mandatory = [...sd.slice(0,3),...sm.slice(0,3),...sf.slice(0,1)];
-  const usedIds = new Set(mandatory.map(p=>p.id));
-  const flex = [...sd.slice(3),...sm.slice(3),...sf.slice(1)]
-    .filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
-
-  const posOrder = {GK:0,DEF:1,MID:2,FWD:3};
-  const xiUnsorted = [gkEntry,...mandatory,...flex];
-  const xiIds = new Set(xiUnsorted.filter(p=>p.id!=='gk').map(p=>p.id));
-  const xi = [...xiUnsorted].sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
-  const bench = [...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')]
-    .filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
-
-  const remainingXI = xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length;
-  return {total:xi.reduce((s,p)=>s+p.pts,0), xi, bench, gk, remainingXI};
-}
-
-// ── PLAYER NAME WITH FLAG ─────────────────────────────────────────────────────
-function pName(p) {
-  if (p.id==='gk') return p.name;
-  const club = p.club ? ` <span class="player-club">(${p.club})</span>` : '';
-  const flag = statusFlag(p.id);
-  return `${p.name}${club}${flag}`;
+// ── BEST XI ───────────────────────────────────────────────────────────────────
+function bestXI(team){
+  const gk=getGKResult(team);
+  const sc=id=>liveScores[id]??0;
+  const hasGame=id=>{const p=playerMap[id];return p?teamsWithGame.has(p.teamId):false;};
+  const played=id=>{const p=playerMap[id];return sc(id)>0||(p&&teamsFinished.has(p.teamId));};
+  const mk=(ids,pos)=>ids.map(id=>({id,pts:sc(id),pos,name:playerMap[id]?.name??('#'+id),club:playerMap[id]?.teamShort??'',hasGame:hasGame(id),played:played(id),seasonPts:playerMap[id]?.seasonPts??0}));
+  const sort=arr=>[...arr].sort((a,b)=>b.pts-a.pts);
+  const sd=sort(mk(team.def,'DEF')),sm=sort(mk(team.mid,'MID')),sf=sort(mk(team.fwd,'FWD'));
+  const gkEntry={id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:'',hasGame:false,played:true,seasonPts:0};
+  const mandatory=[...sd.slice(0,3),...sm.slice(0,3),...sf.slice(0,1)];
+  const usedIds=new Set(mandatory.map(p=>p.id));
+  const flex=[...sd.slice(3),...sm.slice(3),...sf.slice(1)].filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
+  const posOrder={GK:0,DEF:1,MID:2,FWD:3};
+  const xiUnsorted=[gkEntry,...mandatory,...flex];
+  const xiIds=new Set(xiUnsorted.filter(p=>p.id!=='gk').map(p=>p.id));
+  const xi=[...xiUnsorted].sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
+  const bench=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')].filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
+  const remainingXI=xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length;
+  return{total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gk,remainingXI};
 }
 
 // ── RENDER MATCHUPS ───────────────────────────────────────────────────────────
 function renderMatchups(){
-  const fixtures=FIXTURES[currentGW];
-  if(!fixtures){document.getElementById('matchupsBody').innerHTML='<div class="error-state">No fixtures for GW'+currentGW+'</div>';return;}
+  const fixtures=FIXTURES[selectedGW];
   const posC={GK:'pos-gk',DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
-  const isFinals=currentGW>=36;
+  const isFinals=selectedGW>=36;
+  const isFuture=!gwEvents[selectedGW]?.finished&&!gwEvents[selectedGW]?.is_current;
+
+  if(!fixtures){
+    document.getElementById('matchupsBody').innerHTML='<div class="error-state">No fixtures configured for GW'+selectedGW+'.<br><span style="font-size:11px;opacity:.6">Fixtures for GW36–38 (finals) will be added once the top 4 is known.</span></div>';
+    return;
+  }
 
   const html=fixtures.map((m,i)=>{
-    const home=TEAMS.find(t=>t.id===m.home), away=TEAMS.find(t=>t.id===m.away);
-    const hs=bestXI(home), as=bestXI(away);
+    const home=TEAMS.find(t=>t.id===m.home),away=TEAMS.find(t=>t.id===m.away);
+    const hs=bestXI(home),as=bestXI(away);
     const hc=hs.total>as.total?'winning':hs.total<as.total?'losing':'drawing';
     const ac=as.total>hs.total?'winning':as.total<hs.total?'losing':'drawing';
-    const chip=dataChecked?'<div class="fin-chip">FT ✓</div>':isFinals?'<div class="finals-chip">⭐ Finals</div>':'<div class="live-chip"><div class="dot"></div>Live</div>';
-    const lbl=isFinals?finalsLabel(currentGW,i):`Match ${i+1} of ${fixtures.length}`;
+    const dc=gwEvents[selectedGW]?.data_checked??false;
+    const chip=dc?'<div class="fin-chip">FT ✓</div>':isFinals?'<div class="finals-chip">⭐ Finals</div>':isFuture?'<div class="fin-chip">Upcoming</div>':'<div class="live-chip"><div class="dot"></div>Live</div>';
+    const lbl=isFinals?finalsLabel(selectedGW,i):`Match ${i+1} of ${fixtures.length}`;
     const cid='card-'+i;
-    const hRem=hs.remainingXI>0?`<span class="remaining">${hs.remainingXI} to play</span>`:'<span>XI complete</span>';
-    const aRem=as.remainingXI>0?`<span class="remaining">${as.remainingXI} to play</span>`:'<span>XI complete</span>';
+    const hRem=!isFuture?(hs.remainingXI>0?`<span class="remaining">${hs.remainingXI} to play</span>`:'<span>XI complete</span>'):'<span>Not started</span>';
+    const aRem=!isFuture?(as.remainingXI>0?`<span class="remaining">${as.remainingXI} to play</span>`:'<span>XI complete</span>'):'<span>Not started</span>';
 
-    const mkRow = (p, isBench=false) => {
-      const notYet = !p.played && p.hasGame && p.id !== 'gk';
-      const flag = p.id !== 'gk' ? statusFlag(p.id) : '';
-      const club = p.id !== 'gk' && p.club ? ` <span class="player-club">(${p.club})</span>` : '';
-      return `<div class="player-row ${isBench?'bench':''} ${notYet?'not-played':''}">
-        <span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span>
-        <span class="player-name">${p.name}${club}${flag}</span>
-        <span class="player-pts">${p.pts}</span>
-      </div>`;
+    const mkRow=(p,isBench=false)=>{
+      const notYet=!p.played&&p.hasGame&&p.id!=='gk';
+      const flag=p.id!=='gk'?statusFlag(p.id):'';
+      const club=p.id!=='gk'&&p.club?` <span class="player-club">(${p.club})</span>`:'';
+      return`<div class="player-row ${isBench?'bench':''} ${notYet?'not-played':''}"><span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span><span class="player-name">${p.name}${club}${flag}</span><span class="player-pts">${p.pts}</span></div>`;
     };
-
-    const mkGKBenchRow = (gkBench) => {
-      if (!gkBench) return '';
-      const flag = gkBench.statusId ? statusFlag(gkBench.statusId) : '';
-      return `<div class="player-row bench">
-        <span class="pos-tag pos-gk">GK</span>
-        <span class="player-name">${gkBench.name} <span class="player-club">(${gkBench.clubName})</span>${flag}</span>
-        <span class="player-pts">${gkBench.pts}</span>
-      </div>`;
+    const mkGKBench=b=>{
+      if(!b)return'';
+      const flag=b.statusId?statusFlag(b.statusId):'';
+      return`<div class="player-row bench"><span class="pos-tag pos-gk">GK</span><span class="player-name">${b.name} <span class="player-club">(${b.clubName})</span>${flag}</span><span class="player-pts">${b.pts}</span></div>`;
     };
+    const mkTeamDetail=(t,r)=>`<div class="detail-team-header">${t.short} · ${r.total}pts</div>${r.xi.map(p=>mkRow(p)).join('')}<div class="bench-divider">Bench</div>${mkGKBench(r.gk.bench)}${r.bench.slice(0,4).map(p=>mkRow(p,true)).join('')}`;
 
-    const mkTeamDetail = (t,r) => {
-      const xiRows = r.xi.map(p => mkRow(p)).join('');
-      const gkBenchRow = mkGKBenchRow(r.gk.bench);
-      const outfieldBench = r.bench.slice(0,4).map(p=>mkRow(p,true)).join('');
-      return `<div class="detail-team-header">${t.short} · ${r.total}pts</div>
-        ${xiRows}
-        <div class="bench-divider">Bench</div>
-        ${gkBenchRow}${outfieldBench}`;
-    };
-
-    return `<div class="matchup-card" id="${cid}">
+    return`<div class="matchup-card" id="${cid}">
       <div class="card-header" onclick="toggleCard('${cid}')">
         <span class="match-label">${lbl}</span>${chip}
         <span class="card-toggle" id="toggle-${cid}">▼</span>
       </div>
       <div class="card-scores" onclick="toggleCard('${cid}')">
-        <div class="team-side left">
-          <div class="team-name-big">${home.name}</div>
-          <div class="team-meta team-manager">${home.manager}</div>
-          <div class="team-meta">${hRem}</div>
-        </div>
-        <div class="score-block">
-          <span class="score ${hc}">${hs.total}</span>
-          <span class="score-sep">–</span>
-          <span class="score ${ac}">${as.total}</span>
-        </div>
-        <div class="team-side right">
-          <div class="team-name-big">${away.name}</div>
-          <div class="team-meta team-manager">${away.manager}</div>
-          <div class="team-meta">${aRem}</div>
-        </div>
+        <div class="team-side left"><div class="team-name-big">${home.name}</div><div class="team-meta team-manager">${home.manager}</div><div class="team-meta">${hRem}</div></div>
+        <div class="score-block"><span class="score ${hc}">${hs.total}</span><span class="score-sep">–</span><span class="score ${ac}">${as.total}</span></div>
+        <div class="team-side right"><div class="team-name-big">${away.name}</div><div class="team-meta team-manager">${away.manager}</div><div class="team-meta">${aRem}</div></div>
       </div>
       <div class="card-detail" id="detail-${cid}">
-        <div class="detail-inner">
-          <div class="detail-cols">
-            <div>${mkTeamDetail(home,hs)}</div>
-            <div>${mkTeamDetail(away,as)}</div>
-          </div>
-        </div>
+        <div class="detail-inner"><div class="detail-cols"><div>${mkTeamDetail(home,hs)}</div><div>${mkTeamDetail(away,as)}</div></div></div>
       </div>
     </div>`;
   }).join('');
-
   document.getElementById('matchupsBody').innerHTML='<div class="matchups-grid">'+html+'</div>';
 }
 
@@ -440,14 +459,14 @@ function toggleCard(cid){
 
 function finalsLabel(gw,i){
   if(gw===36)return i===0?'🏆 Qualifying Final (1v2)':'⚔️ Elimination Final (3v4)';
-  if(gw===37)return '⚔️ Preliminary Final';
-  if(gw===38)return '🏆 Grand Final';
-  return 'Match '+(i+1);
+  if(gw===37)return'⚔️ Preliminary Final';
+  if(gw===38)return'🏆 Grand Final';
+  return'Match '+(i+1);
 }
 
-// ── RENDER LADDER ─────────────────────────────────────────────────────────────
+// ── LADDER (always uses selectedGW context) ───────────────────────────────────
 function applyResult(s,hId,aId,hPts,aPts){
-  const h=s[hId],a=s[aId]; if(!h||!a)return;
+  const h=s[hId],a=s[aId];if(!h||!a)return;
   h.p++;a.p++;h.f+=hPts;h.a+=aPts;a.f+=aPts;a.a+=hPts;
   if(hPts>aPts){h.w++;h.pts+=3;h.form.push('W');a.l++;a.form.push('L');}
   else if(aPts>hPts){a.w++;a.pts+=3;a.form.push('W');h.l++;h.form.push('L');}
@@ -457,128 +476,81 @@ function applyResult(s,hId,aId,hPts,aPts){
 function renderLadder(){
   const s={};
   TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW30[t.id],name:t.name,short:t.short,manager:t.manager,form:[]};});
+  // Always apply GW31 from historical
   if(FIXTURES[31]&&HISTORICAL[31])FIXTURES[31].forEach(m=>applyResult(s,m.home,m.away,HISTORICAL[31][m.home]??0,HISTORICAL[31][m.away]??0));
-  if(dataChecked&&currentGW>31&&FIXTURES[currentGW])FIXTURES[currentGW].forEach(m=>applyResult(s,m.home,m.away,bestXI(TEAMS.find(t=>t.id===m.home)).total,bestXI(TEAMS.find(t=>t.id===m.away)).total));
+  // Apply current selected GW if it's after 31 and data is checked
+  const dc=gwEvents[selectedGW]?.data_checked??false;
+  if(dc&&selectedGW>31&&FIXTURES[selectedGW])FIXTURES[selectedGW].forEach(m=>applyResult(s,m.home,m.away,bestXI(TEAMS.find(t=>t.id===m.home)).total,bestXI(TEAMS.find(t=>t.id===m.away)).total));
+  const subtitle=dc&&selectedGW>31?`Through GW${selectedGW}`:'Through GW31';
+  document.getElementById('ladderSubtitle').textContent=subtitle;
   const sorted=Object.values(s).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
-  document.getElementById('ladderSubtitle').textContent=dataChecked&&currentGW>31?`Through GW${currentGW}`:'Through GW31';
   const rows=sorted.map((t,i)=>{
     const pos=i+1,inF=pos<=4;
     const fd=t.form.slice(-5).map(r=>`<div class="form-dot form-${r.toLowerCase()}"></div>`).join('');
-    return `${pos===5?'<tr class="finals-divider"><td colspan="7">▼ Outside Finals</td></tr>':''}
-    <tr class="ladder-row ${inF?'finals':''} pos-${pos}">
-      <td><span class="pos-num">${pos}</span><span class="ladder-team-name">${t.short}</span><span class="ladder-manager">${t.manager}</span><span class="form-dots">${fd}</span></td>
-      <td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td>
-      <td class="pts-cell">${t.pts}</td>
-    </tr>`;
+    return`${pos===5?'<tr class="finals-divider"><td colspan="7">▼ Outside Finals</td></tr>':''}<tr class="ladder-row ${inF?'finals':''} pos-${pos}"><td><span class="pos-num">${pos}</span><span class="ladder-team-name">${t.short}</span><span class="ladder-manager">${t.manager}</span><span class="form-dots">${fd}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td><td class="pts-cell">${t.pts}</td></tr>`;
   }).join('');
   document.getElementById('ladderBody').innerHTML=`<div class="ladder-card"><table class="ladder-table"><thead><tr><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>F</th><th>PTS</th></tr></thead><tbody>${rows}</tbody></table></div><div style="margin-top:10px;font-size:10px;color:var(--muted);text-align:center">Top 4 qualify for finals · GW36–38</div>`;
 }
 
-// ── RENDER SQUADS ─────────────────────────────────────────────────────────────
+// ── SQUADS ────────────────────────────────────────────────────────────────────
 function renderSquads(){
   const posC={GK:'pos-gk',DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
-
   const html=TEAMS.map(team=>{
     const result=bestXI(team);
     const xiIds=new Set(result.xi.filter(p=>p.id!=='gk').map(p=>p.id));
-    const startingClub = result.gk.clubName;
-
-    // GK rows — show club name (not keeper name), sorted so starting GK club first
-    const gkRows = team.gk.map(clubName => {
-      const isStarting = clubName === startingClub;
-      // Find best keeper in this club for status flag
-      const fid = clubNameToId[clubName];
-      const clubGKs = (fid !== undefined ? gkScores[fid] : null) || [];
-      const statusId = clubGKs.length > 0 ? clubGKs[0].id : null;
-      const flag = statusId ? statusFlag(statusId) : '';
-      return `<div class="squad-player-row ${isStarting?'in-xi':'on-bench'}">
-        <div style="display:flex;align-items:center;gap:6px">
-          <span class="pos-tag pos-gk">GK</span>
-          <span class="squad-player-name">${clubName}${flag}</span>
-        </div>
-      </div>`;
-    }).sort((a,b) => {
-      // Starting club row first
-      return a.includes('in-xi') ? -1 : 1;
-    }).join('');
-
-    // Outfield groups — sorted by season pts descending, no GW score
+    const startingClub=result.gk.clubName;
+    const gkRows=team.gk.map(clubName=>{
+      const isStarting=clubName===startingClub;
+      const fid=clubNameToId[clubName];
+      const clubGKs=(fid!==undefined?gkScores[fid]:null)||[];
+      const flag=clubGKs[0]?.id?statusFlag(clubGKs[0].id):'';
+      return`<div class="squad-player-row ${isStarting?'in-xi':'on-bench'}"><div style="display:flex;align-items:center;gap:6px"><span class="pos-tag pos-gk">GK</span><span class="squad-player-name">${clubName}${flag}</span></div></div>`;
+    }).sort((a,b)=>a.includes('in-xi')?-1:1).join('');
     const mkGroup=(ids,pos,label)=>{
-      const players = ids.map(id=>({
-        id, inXI:xiIds.has(id),
-        name:playerMap[id]?.name??('#'+id),
-        club:playerMap[id]?.teamShort??'',
-        sP:playerMap[id]?.seasonPts??0,
-      })).sort((a,b)=>b.sP-a.sP);
-
-      const rows = players.map(p=>{
-        const flag = statusFlag(p.id);
-        return `<div class="squad-player-row ${p.inXI?'in-xi':'on-bench'}">
-          <div style="display:flex;align-items:center;gap:6px">
-            <span class="pos-tag ${posC[pos]}">${pos}</span>
-            <span class="squad-player-name">${p.name} <span class="player-club">(${p.club})</span>${flag}</span>
-          </div>
-          <div class="squad-player-right">
-            <span class="squad-season-pts">${p.sP} pts</span>
-          </div>
-        </div>`;
-      }).join('');
-      return `<div class="squad-pos-group"><div class="squad-pos-label">${label}</div>${rows}</div>`;
+      const players=ids.map(id=>({id,inXI:xiIds.has(id),name:playerMap[id]?.name??('#'+id),club:playerMap[id]?.teamShort??'',sP:playerMap[id]?.seasonPts??0})).sort((a,b)=>b.sP-a.sP);
+      const rows=players.map(p=>`<div class="squad-player-row ${p.inXI?'in-xi':'on-bench'}"><div style="display:flex;align-items:center;gap:6px"><span class="pos-tag ${posC[pos]}">${pos}</span><span class="squad-player-name">${p.name} <span class="player-club">(${p.club})</span>${statusFlag(p.id)}</span></div><div class="squad-player-right"><span class="squad-season-pts">${p.sP} pts</span></div></div>`).join('');
+      return`<div class="squad-pos-group"><div class="squad-pos-label">${label}</div>${rows}</div>`;
     };
-
-    return `<div class="squad-team-card">
-      <div class="squad-team-header">
-        <div>
-          <div class="squad-team-name">${team.name}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${team.manager}</div>
-        </div>
-        <div><div class="squad-xi-score">${result.total}</div><div class="squad-xi-label">Best XI</div></div>
-      </div>
-      <div class="squad-players">
-        <div class="squad-pos-group"><div class="squad-pos-label">Goalkeepers</div>${gkRows}</div>
-        ${mkGroup(team.def,'DEF','Defenders')}
-        ${mkGroup(team.mid,'MID','Midfielders')}
-        ${mkGroup(team.fwd,'FWD','Forwards')}
-      </div>
-    </div>`;
+    return`<div class="squad-team-card"><div class="squad-team-header"><div><div class="squad-team-name">${team.name}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${team.manager}</div></div><div><div class="squad-xi-score">${result.total}</div><div class="squad-xi-label">GW${selectedGW}</div></div></div><div class="squad-players"><div class="squad-pos-group"><div class="squad-pos-label">Goalkeepers</div>${gkRows}</div>${mkGroup(team.def,'DEF','Defenders')}${mkGroup(team.mid,'MID','Midfielders')}${mkGroup(team.fwd,'FWD','Forwards')}</div></div>`;
   }).join('');
   document.getElementById('squadsBody').innerHTML=html;
 }
 
-// ── API & LOAD ────────────────────────────────────────────────────────────────
+// ── API ───────────────────────────────────────────────────────────────────────
 async function apiFetch(p){const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();}
 
-function updateHeader(){
-  document.getElementById('gwNum').textContent=currentGW;
-  document.getElementById('sectionTitle').textContent=`GW${currentGW} Fixtures`;
-  const b=document.getElementById('bonusBadge');
-  b.className=dataChecked?'bonus-badge badge-confirmed':'bonus-badge badge-pending';
-  b.innerHTML=dataChecked?'<div class="pulse-dot"></div><span>Bonus Confirmed</span>':'<div class="pulse-dot"></div><span>Bonus Pending</span>';
-}
-
+// ── INITIAL LOAD ──────────────────────────────────────────────────────────────
 async function loadAll(){
   const icon=document.getElementById('refreshIcon');
   if(icon)icon.classList.add('spinning');
   try{
     const boot=await apiFetch('/api/bootstrap');
 
-    // GW: prefer current; between GWs use previous
+    // Build GW event map
+    gwEvents={};
+    boot.events?.forEach(e=>{gwEvents[e.id]=e;});
+    minGW=boot.events?.[0]?.id??1;
+    maxGW=boot.events?.[boot.events.length-1]?.id??38;
+
+    // Determine the right default GW to show:
+    // If a GW is currently live → show it
+    // If between GWs → show the most recently completed one
     const evCurrent=boot.events?.find(e=>e.is_current);
     const evPrev=boot.events?.find(e=>e.is_previous);
     const evNext=boot.events?.find(e=>e.is_next);
-    const ev=evCurrent||(evNext&&!evCurrent?evPrev:null)||evNext;
-    currentGW=ev?.id??31; dataChecked=ev?.data_checked??false;
+    defaultGW = evCurrent?.id ?? evPrev?.id ?? evNext?.id ?? 31;
+    selectedGW = defaultGW;
 
-    // Dynamic club name → ID map
+    // Build club name → ID map
     clubNameToId={};
     boot.teams?.forEach(t=>{clubNameToId[t.name]=t.id;clubNameToId[t.short_name]=t.id;});
 
-    // Player map with status info
+    // Build player map
     const teamShortMap={};
     boot.teams?.forEach(t=>{teamShortMap[t.id]=t.short_name;});
     boot.elements?.forEach(p=>{
       playerMap[p.id]={
-        name:p.web_name, type:p.element_type, teamId:p.team,
+        name:p.web_name,type:p.element_type,teamId:p.team,
         teamShort:teamShortMap[p.team]??'',
         seasonPts:p.total_points??0,
         status:p.status??'a',
@@ -588,40 +560,41 @@ async function loadAll(){
       };
     });
 
-    // GW fixture data
-    const gwFix=await apiFetch('/api/fixtures/'+currentGW);
-    teamsWithGame=new Set(); teamsFinished=new Set();
-    gwFix.forEach(f=>{
-      teamsWithGame.add(f.team_h);teamsWithGame.add(f.team_a);
-      if(f.finished||f.finished_provisional){teamsFinished.add(f.team_h);teamsFinished.add(f.team_a);}
-    });
+    // Load data for the default GW
+    await loadGWData(selectedGW);
+    dataChecked=gwEvents[selectedGW]?.data_checked??false;
 
-    // Live scores
-    const gwLoad=FIXTURES[currentGW]?currentGW:31;
-    const live=await apiFetch('/api/live/'+gwLoad);
-    liveScores={}; gkScores={};
-    live.elements?.forEach(e=>{
-      const pts=e.stats?.total_points??0;
-      liveScores[e.id]=pts;
-      const p=playerMap[e.id];
-      if(p?.type===1){
-        if(!gkScores[p.teamId]) gkScores[p.teamId]=[];
-        gkScores[p.teamId].push({id:e.id,pts,name:p.name});
-        gkScores[p.teamId].sort((a,b)=>b.pts-a.pts);
-      }
-    });
-
-    updateHeader(); renderMatchups();
+    updateGWNav();
+    renderMatchups();
     document.getElementById('metaRow').style.display='flex';
     document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     if(currentPage==='ladder')renderLadder();
     if(currentPage==='squads')renderSquads();
+
   }catch(err){
     document.getElementById('matchupsBody').innerHTML='<div class="error-state"><strong>Could not load FPL data</strong><br>'+err.message+'</div>';
-  }finally{if(icon)icon.classList.remove('spinning');}
+    document.getElementById('gwNum').textContent='ERR';
+  }finally{
+    if(icon)icon.classList.remove('spinning');
+  }
 }
+
+// Auto-refresh: only re-fetch live data for the currently viewed GW
+async function refreshCurrent(){
+  if(!selectedGW)return;
+  // Clear cache for selected GW so it re-fetches fresh
+  delete gwCache[selectedGW];
+  await loadGWData(selectedGW);
+  dataChecked=gwEvents[selectedGW]?.data_checked??false;
+  updateGWNav();
+  renderMatchups();
+  document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if(currentPage==='ladder')renderLadder();
+  if(currentPage==='squads')renderSquads();
+}
+
 loadAll();
-setInterval(loadAll,60000);
+setInterval(refreshCurrent, 60000);
 </script>
 </body>
 </html>
