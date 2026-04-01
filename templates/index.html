@@ -64,7 +64,7 @@
   .team-side{display:flex;flex-direction:column;gap:5px;}
   .team-side.right{align-items:flex-end;text-align:right;}
   .team-name-big{font-size:15px;font-weight:700;color:var(--white);line-height:1.2;}
-  .team-meta{font-size:11px;color:var(--muted);}
+  .team-meta{font-size:11px;color:var(--muted);}.team-manager{font-size:11px;color:var(--gold-dim);font-weight:500;letter-spacing:.2px;}.ladder-team-name{font-size:13px;font-weight:600;}.ladder-manager{font-size:10px;color:var(--muted);margin-left:5px;opacity:.7;}
   .team-meta .remaining{color:var(--gold);font-weight:600;}
   .score-block{display:flex;align-items:center;gap:6px;flex-shrink:0;}
   .score{font-family:'Bebas Neue',sans-serif;font-size:44px;line-height:1;min-width:48px;text-align:center;transition:color .3s;}
@@ -184,14 +184,14 @@
 </div>
 <script>
 const TEAMS=[
-  {id:1,name:"The Legend of Porro and Yoro",short:"Porro & Yoro",gk:["Arsenal","Fulham"],def:[683,568,106,473,575,228,7],mid:[119,237,414,387,20,487,242],fwd:[430,283,691,671]},
-  {id:2,name:"A Sarr is Born",short:"A Sarr is Born",gk:["Man City","Man Utd"],def:[371,475,41,293,316,77,507],mid:[381,413,582,267,427,50,350],fwd:[249,178,136,808]},
-  {id:3,name:"Bread and Rutter",short:"Bread & Rutter",gk:["Brighton","Brighton"],def:[370,256,72,694,476,317,477],mid:[266,235,158,486,241,699,488],fwd:[661,654,311,100]},
-  {id:4,name:"Iwobi Noni Kenobis",short:"Iwobi Noni",gk:["Everton","Crystal Palace"],def:[6,224,5,440,292,478,107],mid:[450,324,18,26,390,21,418],fwd:[31,215,785,338]},
-  {id:5,name:"Ndiaaaye will always love Diouf",short:"Ndiaaaye",gk:["Brentford","Bournemouth"],def:[260,569,684,291,442,603,226],mid:[16,615,236,160,299,417,329],fwd:[681,97,337,526]},
-  {id:6,name:"Muaniball",short:"Muaniball",gk:["Liverpool","Aston Villa"],def:[258,505,411,74,225,257,148],mid:[17,485,717,84,82,515,83],fwd:[596,666,310,726]},
-  {id:7,name:"Gittens Car Wash",short:"Gittens CW",gk:["Newcastle","Leeds"],def:[443,725,113,374,407,110,36],mid:[382,452,708,453,303,120,157],fwd:[64,250,560,791]},
-  {id:8,name:"Bowenie Babies",short:"Bowenie Babies",gk:["Chelsea","Sunderland"],def:[261,373,8,531,295,151,408],mid:[384,449,47,796,517,457,660],fwd:[714,30,135,624]},
+  {id:1,name:"The Legend of Porro and Yoro",short:"Porro & Yoro",manager:"Ritz & Shandler",gk:["Arsenal","Fulham"],def:[683,568,106,473,575,228,7],mid:[119,237,414,387,20,487,242],fwd:[430,283,691,671]},
+  {id:2,name:"A Sarr is Born",short:"A Sarr is Born",manager:"Mindel",gk:["Man City","Man Utd"],def:[371,475,41,293,316,77,507],mid:[381,413,582,267,427,50,350],fwd:[249,178,136,808]},
+  {id:3,name:"Bread and Rutter",short:"Bread & Rutter",manager:"Nic & Tom",gk:["Brighton","Brighton"],def:[370,256,72,694,476,317,477],mid:[266,235,158,486,241,699,488],fwd:[661,654,311,100]},
+  {id:4,name:"Iwobi Noni Kenobis",short:"Iwobi Noni",manager:"Jules",gk:["Everton","Crystal Palace"],def:[6,224,5,440,292,478,107],mid:[450,324,18,26,390,21,418],fwd:[31,215,785,338]},
+  {id:5,name:"Ndiaaaye will always love Diouf",short:"Ndiaaaye",manager:"Brent & Josh",gk:["Brentford","Bournemouth"],def:[260,569,684,291,442,603,226],mid:[16,615,236,160,299,417,329],fwd:[681,97,337,526]},
+  {id:6,name:"Muaniball",short:"Muaniball",manager:"Dean",gk:["Liverpool","Aston Villa"],def:[258,505,411,74,225,257,148],mid:[17,485,717,84,82,515,83],fwd:[596,666,310,726]},
+  {id:7,name:"Gittens Car Wash",short:"Gittens CW",manager:"Harrison",gk:["Newcastle","Leeds"],def:[443,725,113,374,407,110,36],mid:[382,452,708,453,303,120,157],fwd:[64,250,560,791]},
+  {id:8,name:"Bowenie Babies",short:"Bowenie Babies",manager:"Gid & Benny",gk:["Chelsea","Sunderland"],def:[261,373,8,531,295,151,408],mid:[384,449,47,796,517,457,660],fwd:[714,30,135,624]},
 ];
 const FIXTURES={
   31:[{home:5,away:8},{home:3,away:4},{home:1,away:6},{home:2,away:7}],
@@ -212,47 +212,96 @@ const STANDINGS_GW30={
 };
 const HISTORICAL={31:{1:26,2:49,3:40,4:44,5:57,6:46,7:51,8:54}};
 
+// Runtime maps built from FPL bootstrap
+let playerMap={};     // fpl_id → {name, webName, type, teamId, teamShort, seasonPts}
+let liveScores={};    // fpl_id → pts this GW
+let gkScores={};      // fpl_team_id → array of {id, pts, name} for all GKs that played
+let teamsWithGame=new Set();
+let teamsFinished=new Set();
+let clubNameToId={};  // "Brentford" → 4  (built dynamically from boot.teams)
+let currentGW=31, dataChecked=false, currentPage='matchups';
 
-let playerMap={},liveScores={},gkBest={},teamsWithGame=new Set(),teamsFinished=new Set(),clubNameToId={};
-let currentGW=31,dataChecked=false,currentPage='matchups';
-
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
 function showPage(name,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item,.bn-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   const names=['matchups','ladder','squads'];
   const idx=names.indexOf(name);
-  if(idx>=0){
-    document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
-    document.querySelectorAll('.bn-item')[idx]?.classList.add('active');
-  }
+  if(idx>=0){document.querySelectorAll('.nav-item')[idx]?.classList.add('active');document.querySelectorAll('.bn-item')[idx]?.classList.add('active');}
   currentPage=name;
   if(name==='ladder')renderLadder();
   if(name==='squads')renderSquads();
 }
 
-function bestXI(team){
-  let gkPts=0,gkClub='';
-  team.gk.forEach(cn=>{
-    const fid=clubNameToId[cn];
-    if(fid!==undefined&&(gkBest[fid]??-1)>gkPts){gkPts=gkBest[fid];gkClub=cn;}
+// ── GK LOGIC ─────────────────────────────────────────────────────────────────
+// For each GK club, find the best-scoring keeper from that club this GW.
+// Returns {pts, name, clubName} - treats them like individual players.
+// If both keepers played (injury sub), add scores together per rules.
+function getGKScore(team) {
+  let bestPts = 0, bestName = '', bestClub = '';
+  team.gk.forEach(clubName => {
+    const fid = clubNameToId[clubName];
+    if (fid === undefined) return;
+    const clubGKs = gkScores[fid] || [];
+    if (clubGKs.length === 0) return;
+    let clubPts, clubName2;
+    if (clubGKs.length >= 2 && clubGKs[0].pts > 0 && clubGKs[1].pts > 0) {
+      // Both played (injury sub scenario) - combine scores
+      clubPts = clubGKs.reduce((s,g)=>s+g.pts, 0);
+      clubName2 = clubGKs.map(g=>g.name).join('+');
+    } else {
+      // Take best
+      const best = clubGKs.reduce((a,b)=>a.pts>=b.pts?a:b);
+      clubPts = best.pts;
+      clubName2 = best.name;
+    }
+    if (clubPts > bestPts) { bestPts = clubPts; bestName = clubName2; bestClub = clubName; }
   });
-  const sc=id=>liveScores[id]??0;
-  const hasGame=id=>{const p=playerMap[id];return p?teamsWithGame.has(p.teamId):false;};
-  const played=id=>{const p=playerMap[id];return sc(id)>0||(p&&teamsFinished.has(p.teamId));};
-  const mk=(ids,pos)=>ids.map(id=>({id,pts:sc(id),pos,name:playerMap[id]?.name??('#'+id),hasGame:hasGame(id),played:played(id)}));
-  const sort=a=>[...a].sort((a,b)=>b.pts-a.pts);
-  const sd=sort(mk(team.def,'DEF')),sm=sort(mk(team.mid,'MID')),sf=sort(mk(team.fwd,'FWD'));
-  const gkEntry={id:'gk',pts:gkPts,pos:'GK',name:gkClub+' GK',hasGame:false,played:true};
-  const mandatory=[...sd.slice(0,3),...sm.slice(0,3),...sf.slice(0,1)];
-  const usedIds=new Set(mandatory.map(p=>p.id));
-  const flex=[...sd.slice(3),...sm.slice(3),...sf.slice(1)].filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
-  const posOrder={GK:0,DEF:1,MID:2,FWD:3};const xiUnsorted=[gkEntry,...mandatory,...flex];const xiIds=new Set(xiUnsorted.filter(p=>p.id!=="gk").map(p=>p.id));const xi=xiUnsorted.sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
-  
-  const bench=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')].filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
-  
-  const remainingXI=xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length;
-  return{total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gkPts,remainingXI};
+  return { pts: bestPts, name: bestName || (team.gk[0]+' GK'), club: bestClub };
+}
+
+// ── BEST XI ENGINE ────────────────────────────────────────────────────────────
+function bestXI(team) {
+  const gk = getGKScore(team);
+  const sc = id => liveScores[id] ?? 0;
+  const hasGame = id => { const p=playerMap[id]; return p ? teamsWithGame.has(p.teamId) : false; };
+  const played  = id => { const p=playerMap[id]; return sc(id)>0 || (p && teamsFinished.has(p.teamId)); };
+  const teamShort = id => playerMap[id]?.teamShort ?? '';
+  const mk = (ids,pos) => ids.map(id => ({
+    id, pts:sc(id), pos,
+    name: playerMap[id]?.name ?? ('#'+id),
+    club: teamShort(id),
+    hasGame: hasGame(id),
+    played: played(id),
+    seasonPts: playerMap[id]?.seasonPts ?? 0,
+  }));
+
+  const sort = arr => [...arr].sort((a,b) => b.pts - a.pts);
+  const sd=sort(mk(team.def,'DEF')), sm=sort(mk(team.mid,'MID')), sf=sort(mk(team.fwd,'FWD'));
+
+  const gkEntry = { id:'gk', pts:gk.pts, pos:'GK', name:gk.name, club:'', hasGame:false, played:true, seasonPts:0 };
+  const mandatory = [...sd.slice(0,3), ...sm.slice(0,3), ...sf.slice(0,1)];
+  const usedIds = new Set(mandatory.map(p=>p.id));
+  const flex = [...sd.slice(3),...sm.slice(3),...sf.slice(1)]
+    .filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
+
+  const posOrder = {GK:0,DEF:1,MID:2,FWD:3};
+  const xiUnsorted = [gkEntry,...mandatory,...flex];
+  const xiIds = new Set(xiUnsorted.filter(p=>p.id!=='gk').map(p=>p.id));
+  const xi = xiUnsorted.sort((a,b) => posOrder[a.pos]!==posOrder[b.pos] ? posOrder[a.pos]-posOrder[b.pos] : b.pts-a.pts);
+  const bench = [...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')]
+    .filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
+
+  const remainingXI = xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length;
+  return { total:xi.reduce((s,p)=>s+p.pts,0), xi, bench, gkPts:gk.pts, remainingXI };
+}
+
+// ── RENDER MATCHUPS ───────────────────────────────────────────────────────────
+function pName(p) {
+  // Display name with club abbreviation: "Tarkowski (BRE)"
+  if (p.id==='gk') return p.name;
+  return p.club ? `${p.name} <span style="font-size:9px;opacity:.5">(${p.club})</span>` : p.name;
 }
 
 function renderMatchups(){
@@ -261,8 +310,8 @@ function renderMatchups(){
   const posC={GK:'pos-gk',DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
   const isFinals=currentGW>=36;
   const html=fixtures.map((m,i)=>{
-    const home=TEAMS.find(t=>t.id===m.home),away=TEAMS.find(t=>t.id===m.away);
-    const hs=bestXI(home),as=bestXI(away);
+    const home=TEAMS.find(t=>t.id===m.home), away=TEAMS.find(t=>t.id===m.away);
+    const hs=bestXI(home), as=bestXI(away);
     const hc=hs.total>as.total?'winning':hs.total<as.total?'losing':'drawing';
     const ac=as.total>hs.total?'winning':as.total<hs.total?'losing':'drawing';
     const chip=dataChecked?'<div class="fin-chip">FT ✓</div>':isFinals?'<div class="finals-chip">⭐ Finals</div>':'<div class="live-chip"><div class="dot"></div>Live</div>';
@@ -270,23 +319,46 @@ function renderMatchups(){
     const cid='card-'+i;
     const hRem=hs.remainingXI>0?`<span class="remaining">${hs.remainingXI} to play</span>`:'<span>XI complete</span>';
     const aRem=as.remainingXI>0?`<span class="remaining">${as.remainingXI} to play</span>`:'<span>XI complete</span>';
+
     const mkTeamDetail=(t,r)=>{
-      const xiR=r.xi.map(p=>`<div class="player-row ${!p.played&&p.hasGame?'not-played':''}"><span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span><span class="player-name">${p.name}</span><span class="player-pts">${p.pts}</span></div>`).join('');
-      const bR=r.bench.slice(0,5).map(p=>`<div class="player-row bench"><span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span><span class="player-name">${p.name}</span><span class="player-pts">${p.pts}</span></div>`).join('');
+      const xiR=r.xi.map(p=>`<div class="player-row ${!p.played&&p.hasGame?'not-played':''}">
+        <span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span>
+        <span class="player-name">${pName(p)}</span>
+        <span class="player-pts">${p.pts}</span></div>`).join('');
+      const bR=r.bench.slice(0,5).map(p=>`<div class="player-row bench">
+        <span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span>
+        <span class="player-name">${pName(p)}</span>
+        <span class="player-pts">${p.pts}</span></div>`).join('');
       return `<div class="detail-team-header">${t.short} · ${r.total}pts</div>${xiR}<div class="bench-divider">Bench</div>${bR}`;
     };
+
     return `<div class="matchup-card" id="${cid}">
       <div class="card-header" onclick="toggleCard('${cid}')">
         <span class="match-label">${lbl}</span>${chip}
         <span class="card-toggle" id="toggle-${cid}">▼</span>
       </div>
       <div class="card-scores" onclick="toggleCard('${cid}')">
-        <div class="team-side left"><div class="team-name-big">${home.name}</div><div class="team-meta">${hRem}</div></div>
-        <div class="score-block"><span class="score ${hc}">${hs.total}</span><span class="score-sep">–</span><span class="score ${ac}">${as.total}</span></div>
-        <div class="team-side right"><div class="team-name-big">${away.name}</div><div class="team-meta">${aRem}</div></div>
+        <div class="team-side left">
+          <div class="team-name-big">${home.name}</div>
+          <div class="team-meta team-manager">${home.manager}</div>
+          <div class="team-meta">${hRem}</div>
+        </div>
+        <div class="score-block">
+          <span class="score ${hc}">${hs.total}</span>
+          <span class="score-sep">–</span>
+          <span class="score ${ac}">${as.total}</span>
+        </div>
+        <div class="team-side right">
+          <div class="team-name-big">${away.name}</div>
+          <div class="team-meta team-manager">${away.manager}</div>
+          <div class="team-meta">${aRem}</div>
+        </div>
       </div>
       <div class="card-detail" id="detail-${cid}">
-        <div class="detail-inner"><div class="detail-cols"><div>${mkTeamDetail(home,hs)}</div><div>${mkTeamDetail(away,as)}</div></div></div>
+        <div class="detail-inner"><div class="detail-cols">
+          <div>${mkTeamDetail(home,hs)}</div>
+          <div>${mkTeamDetail(away,as)}</div>
+        </div></div>
       </div>
     </div>`;
   }).join('');
@@ -308,8 +380,9 @@ function finalsLabel(gw,i){
   return 'Match '+(i+1);
 }
 
+// ── RENDER LADDER ─────────────────────────────────────────────────────────────
 function applyResult(s,hId,aId,hPts,aPts){
-  const h=s[hId],a=s[aId];if(!h||!a)return;
+  const h=s[hId],a=s[aId]; if(!h||!a)return;
   h.p++;a.p++;h.f+=hPts;h.a+=aPts;a.f+=aPts;a.a+=hPts;
   if(hPts>aPts){h.w++;h.pts+=3;h.form.push('W');a.l++;a.form.push('L');}
   else if(aPts>hPts){a.w++;a.pts+=3;a.form.push('W');h.l++;h.form.push('L');}
@@ -318,7 +391,7 @@ function applyResult(s,hId,aId,hPts,aPts){
 
 function renderLadder(){
   const s={};
-  TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW30[t.id],name:t.name,short:t.short,form:[]};});
+  TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW30[t.id],name:t.name,short:t.short,manager:t.manager,form:[]};});
   if(FIXTURES[31]&&HISTORICAL[31])FIXTURES[31].forEach(m=>applyResult(s,m.home,m.away,HISTORICAL[31][m.home]??0,HISTORICAL[31][m.away]??0));
   if(dataChecked&&currentGW>31&&FIXTURES[currentGW])FIXTURES[currentGW].forEach(m=>applyResult(s,m.home,m.away,bestXI(TEAMS.find(t=>t.id===m.home)).total,bestXI(TEAMS.find(t=>t.id===m.away)).total));
   const sorted=Object.values(s).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
@@ -326,29 +399,90 @@ function renderLadder(){
   const rows=sorted.map((t,i)=>{
     const pos=i+1,inF=pos<=4;
     const fd=t.form.slice(-5).map(r=>`<div class="form-dot form-${r.toLowerCase()}"></div>`).join('');
-    return `${pos===5?'<tr class="finals-divider"><td colspan="7">▼ Outside Finals</td></tr>':''}<tr class="ladder-row ${inF?'finals':''} pos-${pos}"><td><span class="pos-num">${pos}</span>${t.short}<span class="form-dots">${fd}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td><td class="pts-cell">${t.pts}</td></tr>`;
+    return `${pos===5?'<tr class="finals-divider"><td colspan="7">▼ Outside Finals</td></tr>':''}
+    <tr class="ladder-row ${inF?'finals':''} pos-${pos}">
+      <td><span class="pos-num">${pos}</span><span class="ladder-team-name">${t.short}</span><span class="ladder-manager">${t.manager}</span><span class="form-dots">${fd}</span></td>
+      <td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td>
+      <td class="pts-cell">${t.pts}</td>
+    </tr>`;
   }).join('');
   document.getElementById('ladderBody').innerHTML=`<div class="ladder-card"><table class="ladder-table"><thead><tr><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>F</th><th>PTS</th></tr></thead><tbody>${rows}</tbody></table></div><div style="margin-top:10px;font-size:10px;color:var(--muted);text-align:center">Top 4 qualify for finals · GW36–38</div>`;
 }
 
+// ── RENDER SQUADS ─────────────────────────────────────────────────────────────
 function renderSquads(){
   const posC={GK:'pos-gk',DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
   const html=TEAMS.map(team=>{
     const result=bestXI(team);
     const xiIds=new Set(result.xi.filter(p=>p.id!=='gk').map(p=>p.id));
-    const gkRow=`<div class="squad-pos-group"><div class="squad-pos-label">Goalkeeper</div><div class="squad-player-row in-xi"><div style="display:flex;align-items:center;gap:6px"><span class="pos-tag pos-gk">GK</span><span class="squad-player-name">${team.gk[0]} / ${team.gk[1]}</span></div><div class="squad-player-right"><span class="squad-gw-pts">${result.gkPts}</span></div></div></div>`;
+
+    // GK rows — show each GK club as individual row, sorted by season pts
+    const gk = getGKScore(team);
+    const gkRows = team.gk.map(clubName => {
+      const fid = clubNameToId[clubName];
+      const clubGKs = (gkScores[fid]||[]);
+      // Find best keeper for display — use highest season pts if available
+      const bestGK = clubGKs.length > 0
+        ? clubGKs.reduce((a,b) => (playerMap[b.id]?.seasonPts??0) > (playerMap[a.id]?.seasonPts??0) ? b : a)
+        : null;
+      const sP = bestGK ? (playerMap[bestGK.id]?.seasonPts??0) : 0;
+      const displayName = bestGK ? (playerMap[bestGK.id]?.name ?? clubName+' GK') : (clubName+' GK');
+      const inXI = gk.club === clubName;
+      return `<div class="squad-player-row ${inXI?'in-xi':'on-bench'}">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="pos-tag pos-gk">GK</span>
+          <span class="squad-player-name">${displayName} <span style="font-size:9px;opacity:.45">(${clubName})</span></span>
+        </div>
+        <div class="squad-player-right">
+          <span class="squad-season-pts">${sP} pts</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Outfield groups — sorted by season pts, no GW score shown
     const mkGroup=(ids,pos,label)=>{
-      const rows=ids.map(id=>{
-        const p=playerMap[id],gwP=liveScores[id]??0,sP=p?.seasonPts??0,inXI=xiIds.has(id);
-        return `<div class="squad-player-row ${inXI?'in-xi':'on-bench'}"><div style="display:flex;align-items:center;gap:6px"><span class="pos-tag ${posC[pos]}">${pos}</span><span class="squad-player-name">${p?.name??('#'+id)}</span></div><div class="squad-player-right"><span class="squad-season-pts">${sP} total</span><span class="squad-gw-pts">${gwP}</span></div></div>`;
-      }).join('');
+      const players = ids.map(id => ({
+        id,
+        name: playerMap[id]?.name ?? ('#'+id),
+        club: playerMap[id]?.teamShort ?? '',
+        sP: playerMap[id]?.seasonPts ?? 0,
+        inXI: xiIds.has(id),
+      })).sort((a,b) => b.sP - a.sP);
+
+      const rows = players.map(p =>
+        `<div class="squad-player-row ${p.inXI?'in-xi':'on-bench'}">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="pos-tag ${posC[pos]}">${pos}</span>
+            <span class="squad-player-name">${p.name} <span style="font-size:9px;opacity:.45">(${p.club})</span></span>
+          </div>
+          <div class="squad-player-right">
+            <span class="squad-season-pts">${p.sP} pts</span>
+          </div>
+        </div>`
+      ).join('');
       return `<div class="squad-pos-group"><div class="squad-pos-label">${label}</div>${rows}</div>`;
     };
-    return `<div class="squad-team-card"><div class="squad-team-header"><div class="squad-team-name">${team.name}</div><div><div class="squad-xi-score">${result.total}</div><div class="squad-xi-label">Best XI</div></div></div><div class="squad-players">${gkRow}${mkGroup(team.def,'DEF','Defenders')}${mkGroup(team.mid,'MID','Midfielders')}${mkGroup(team.fwd,'FWD','Forwards')}</div></div>`;
+
+    return `<div class="squad-team-card">
+      <div class="squad-team-header">
+        <div>
+          <div class="squad-team-name">${team.name}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${team.manager}</div>
+        </div>
+        <div><div class="squad-xi-score">${result.total}</div><div class="squad-xi-label">Best XI</div></div>
+      </div>
+      <div class="squad-players">
+        <div class="squad-pos-group"><div class="squad-pos-label">Goalkeepers</div>${gkRows}</div>
+        ${mkGroup(team.def,'DEF','Defenders')}
+        ${mkGroup(team.mid,'MID','Midfielders')}
+        ${mkGroup(team.fwd,'FWD','Forwards')}
+      </div>
+    </div>`;
   }).join('');
   document.getElementById('squadsBody').innerHTML=html;
 }
 
+// ── API ───────────────────────────────────────────────────────────────────────
 async function apiFetch(p){const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();}
 
 function updateHeader(){
@@ -364,16 +498,57 @@ async function loadAll(){
   if(icon)icon.classList.add('spinning');
   try{
     const boot=await apiFetch('/api/bootstrap');
-    const evCurrent=boot.events?.find(e=>e.is_current);const evPrev=boot.events?.find(e=>e.is_previous);const evNext=boot.events?.find(e=>e.is_next);const ev=evCurrent||(evNext&&!evCurrent?evPrev:null)||evNext;
+
+    // GW detection: prefer is_current; if between GWs use is_previous
+    const evCurrent=boot.events?.find(e=>e.is_current);
+    const evPrev=boot.events?.find(e=>e.is_previous);
+    const evNext=boot.events?.find(e=>e.is_next);
+    const ev = evCurrent || (evNext && !evCurrent ? evPrev : null) || evNext;
     currentGW=ev?.id??31; dataChecked=ev?.data_checked??false;
-    boot.teams?.forEach(t=>{const n=t.name;clubNameToId[n]=t.id;const s=t.short_name;clubNameToId[s]=t.id;});boot.elements?.forEach(p=>{playerMap[p.id]={name:p.web_name,type:p.element_type,teamId:p.team,seasonPts:p.total_points??0};});
+
+    // Build club name → FPL team ID map dynamically
+    clubNameToId={};
+    boot.teams?.forEach(t=>{
+      clubNameToId[t.name]=t.id;
+      clubNameToId[t.short_name]=t.id;
+    });
+
+    // Build player map with team short name
+    const teamShortMap={};
+    boot.teams?.forEach(t=>{ teamShortMap[t.id]=t.short_name; });
+    boot.elements?.forEach(p=>{
+      playerMap[p.id]={
+        name:p.web_name, type:p.element_type, teamId:p.team,
+        teamShort: teamShortMap[p.team]??'',
+        seasonPts:p.total_points??0
+      };
+    });
+
+    // Fixture data for this GW
     const gwFix=await apiFetch('/api/fixtures/'+currentGW);
     teamsWithGame=new Set(); teamsFinished=new Set();
-    gwFix.forEach(f=>{teamsWithGame.add(f.team_h);teamsWithGame.add(f.team_a);if(f.finished||f.finished_provisional){teamsFinished.add(f.team_h);teamsFinished.add(f.team_a);}});
+    gwFix.forEach(f=>{
+      teamsWithGame.add(f.team_h); teamsWithGame.add(f.team_a);
+      if(f.finished||f.finished_provisional){teamsFinished.add(f.team_h);teamsFinished.add(f.team_a);}
+    });
+
+    // Live scores
     const gwLoad=FIXTURES[currentGW]?currentGW:31;
     const live=await apiFetch('/api/live/'+gwLoad);
-    liveScores={}; gkBest={};
-    live.elements?.forEach(e=>{const pts=e.stats?.total_points??0;liveScores[e.id]=pts;const p=playerMap[e.id];if(p?.type===1&&(gkBest[p.teamId]===undefined||pts>gkBest[p.teamId]))gkBest[p.teamId]=pts;});
+    liveScores={}; gkScores={};
+    live.elements?.forEach(e=>{
+      const pts=e.stats?.total_points??0;
+      liveScores[e.id]=pts;
+      const p=playerMap[e.id];
+      if(p?.type===1){
+        // Build per-club GK score list (handles injury sub rule)
+        if(!gkScores[p.teamId]) gkScores[p.teamId]=[];
+        gkScores[p.teamId].push({id:e.id, pts, name:p.name});
+        // Sort descending so best is first
+        gkScores[p.teamId].sort((a,b)=>b.pts-a.pts);
+      }
+    });
+
     updateHeader(); renderMatchups();
     document.getElementById('metaRow').style.display='flex';
     document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
