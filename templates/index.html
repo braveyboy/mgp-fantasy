@@ -247,8 +247,7 @@ const DEFAULT_TEAMS=[
   {id:8,name:"Bowenie Babies",short:"Bowenie Babies",manager:"Gid & Benny",gk:["Chelsea","Sunderland"],def:[261,373,8,531,295,151,408],mid:[384,449,47,796,517,457,660],fwd:[714,30,135,624]},
 ];
 
-// Live TEAMS — gets overridden by DB squad data
-let TEAMS = DEFAULT_TEAMS.map(t=>({...t, def:[...t.def], mid:[...t.mid], fwd:[...t.fwd], gk:[...t.gk]}));
+let TEAMS = DEFAULT_TEAMS.map(t=>({...t,def:[...t.def],mid:[...t.mid],fwd:[...t.fwd],gk:[...t.gk]}));
 
 const FIXTURES={
   31:[{home:5,away:8},{home:3,away:4},{home:1,away:6},{home:2,away:7}],
@@ -258,154 +257,190 @@ const FIXTURES={
   35:[{home:5,away:2},{home:7,away:1},{home:6,away:3},{home:4,away:8}],
 };
 const STANDINGS_GW30={
-  1:{p:30,w:18,d:1,l:11,f:1758,a:1605,pts:55},
-  2:{p:30,w:11,d:2,l:17,f:1443,a:1575,pts:35},
-  3:{p:30,w:9,d:2,l:19,f:1450,a:1686,pts:29},
-  4:{p:30,w:15,d:1,l:14,f:1546,a:1558,pts:46},
-  5:{p:30,w:20,d:0,l:10,f:1754,a:1566,pts:60},
-  6:{p:30,w:15,d:1,l:14,f:1542,a:1530,pts:46},
-  7:{p:30,w:9,d:2,l:19,f:1394,a:1588,pts:29},
-  8:{p:30,w:21,d:1,l:8,f:1791,a:1548,pts:64},
+  1:{p:30,w:18,d:1,l:11,f:1758,a:1605,pts:55},2:{p:30,w:11,d:2,l:17,f:1443,a:1575,pts:35},
+  3:{p:30,w:9,d:2,l:19,f:1450,a:1686,pts:29},4:{p:30,w:15,d:1,l:14,f:1546,a:1558,pts:46},
+  5:{p:30,w:20,d:0,l:10,f:1754,a:1566,pts:60},6:{p:30,w:15,d:1,l:14,f:1542,a:1530,pts:46},
+  7:{p:30,w:9,d:2,l:19,f:1394,a:1588,pts:29},8:{p:30,w:21,d:1,l:8,f:1791,a:1548,pts:64},
 };
 const HISTORICAL={31:{1:26,2:49,3:40,4:44,5:57,6:46,7:51,8:54}};
 
-// Position key helpers
-const POS_KEYS = {
-  gk: ['gk1','gk2'],
-  def: ['def1','def2','def3','def4','def5','def6','def7'],
-  mid: ['mid1','mid2','mid3','mid4','mid5','mid6','mid7'],
-  fwd: ['fwd1','fwd2','fwd3','fwd4'],
-};
-
 // Runtime state
-let playerMap={};
-let allPlayers=[];  // sorted array for search
-let liveScores={}, gkScores={}, teamsWithGame=new Set(), teamsFinished=new Set(), clubNameToId={};
-let defaultGW=31, selectedGW=31, minGW=1, maxGW=38, gwEvents={}, dataChecked=false, currentPage='matchups';
-let gwCache={};
-let activeSearch=null; // {teamId, position, posType}
+let playerMap={}, allPlayers=[], liveScores={}, gkScores={};
+let teamsWithGame=new Set(), teamsFinished=new Set(), clubNameToId={};
+let defaultGW=31, selectedGW=31, minGW=1, maxGW=38, gwEvents={};
+let dataChecked=false, currentPage='matchups', gwCache={};
+let lockedGWs=new Set();       // GWs whose scores are frozen
+let gwSnapshots={};             // {gw: {team_id: {squad, score}}}
+let scoreOverrides={};          // {gw: {team_id: score}}
+let activeSearch=null;
 
-// ── APPLY DB OVERRIDES TO TEAMS ───────────────────────────────────────────────
+// ── SQUAD OVERRIDES ───────────────────────────────────────────────────────────
 function applySquadOverrides(savedSquads, savedGKs) {
-  // Reset to defaults first
-  TEAMS = DEFAULT_TEAMS.map(t=>({...t, def:[...t.def], mid:[...t.mid], fwd:[...t.fwd], gk:[...t.gk]}));
-
-  Object.entries(savedSquads||{}).forEach(([teamIdStr, positions]) => {
-    const teamId = parseInt(teamIdStr);
-    const team = TEAMS.find(t=>t.id===teamId);
-    if (!team) return;
-    Object.entries(positions).forEach(([pos, playerId]) => {
-      if (pos.startsWith('def')) {
-        const idx = parseInt(pos.replace('def','')) - 1;
-        if (idx >= 0 && idx < team.def.length) team.def[idx] = playerId;
-      } else if (pos.startsWith('mid')) {
-        const idx = parseInt(pos.replace('mid','')) - 1;
-        if (idx >= 0 && idx < team.mid.length) team.mid[idx] = playerId;
-      } else if (pos.startsWith('fwd')) {
-        const idx = parseInt(pos.replace('fwd','')) - 1;
-        if (idx >= 0 && idx < team.fwd.length) team.fwd[idx] = playerId;
-      }
+  TEAMS = DEFAULT_TEAMS.map(t=>({...t,def:[...t.def],mid:[...t.mid],fwd:[...t.fwd],gk:[...t.gk]}));
+  Object.entries(savedSquads||{}).forEach(([tid,positions])=>{
+    const team=TEAMS.find(t=>t.id===parseInt(tid)); if(!team)return;
+    Object.entries(positions).forEach(([pos,pid])=>{
+      if(pos.startsWith('def')){const i=parseInt(pos.replace('def',''))-1;if(i>=0&&i<team.def.length)team.def[i]=pid;}
+      else if(pos.startsWith('mid')){const i=parseInt(pos.replace('mid',''))-1;if(i>=0&&i<team.mid.length)team.mid[i]=pid;}
+      else if(pos.startsWith('fwd')){const i=parseInt(pos.replace('fwd',''))-1;if(i>=0&&i<team.fwd.length)team.fwd[i]=pid;}
     });
   });
-
-  Object.entries(savedGKs||{}).forEach(([teamIdStr, slots]) => {
-    const teamId = parseInt(teamIdStr);
-    const team = TEAMS.find(t=>t.id===teamId);
-    if (!team) return;
-    if (slots['1']) team.gk[0] = slots['1'];
-    if (slots['2']) team.gk[1] = slots['2'];
+  Object.entries(savedGKs||{}).forEach(([tid,slots])=>{
+    const team=TEAMS.find(t=>t.id===parseInt(tid)); if(!team)return;
+    if(slots['1'])team.gk[0]=slots['1'];
+    if(slots['2'])team.gk[1]=slots['2'];
   });
 }
 
+// Get all player IDs currently used across all teams
+function getAllUsedPlayerIds() {
+  const used=new Set();
+  TEAMS.forEach(t=>{t.def.forEach(id=>used.add(id));t.mid.forEach(id=>used.add(id));t.fwd.forEach(id=>used.add(id));});
+  return used;
+}
+
+// ── SNAPSHOT / LOCK LOGIC ─────────────────────────────────────────────────────
+// Check if a GW should be locked: deadline of the NEXT GW has passed
+function shouldBeLocked(gw) {
+  const nextGWEvent = gwEvents[gw+1];
+  if(!nextGWEvent) return false;
+  const deadline = new Date(nextGWEvent.deadline_time);
+  return new Date() > deadline;
+}
+
+async function checkAndSnapshotGW(gw) {
+  if(lockedGWs.has(gw)) return; // already locked
+  if(!shouldBeLocked(gw)) return; // not yet time to lock
+  if(!FIXTURES[gw]) return; // no fixtures for this GW
+
+  console.log(`Snapshotting GW${gw}...`);
+
+  // Calculate Best XI score for each team using the scores from that GW
+  const gwData = gwCache[gw];
+  if(!gwData) return; // need the data loaded first
+
+  // Temporarily use this GW's data
+  const savedLS=liveScores, savedGK=gkScores;
+  liveScores=gwData.liveScores; gkScores=gwData.gkScores;
+
+  const teams = TEAMS.map(team=>({
+    team_id: team.id,
+    squad: {
+      gk: [...team.gk],
+      def: [...team.def],
+      mid: [...team.mid],
+      fwd: [...team.fwd],
+    },
+    best_xi_score: bestXI(team).total,
+  }));
+
+  liveScores=savedLS; gkScores=savedGK;
+
+  try {
+    await fetch('/api/snapshot', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({gw, teams})
+    });
+    lockedGWs.add(gw);
+    gwSnapshots[gw] = {};
+    teams.forEach(t=>{ gwSnapshots[gw][t.team_id]={squad:t.squad, score:t.best_xi_score}; });
+    console.log(`GW${gw} locked.`);
+  } catch(e) { console.warn('Snapshot failed:', e); }
+}
+
+// Get score for a team in a GW — uses snapshot if locked, live calc otherwise
+function getTeamGWScore(teamId, gw) {
+  // Admin override always wins
+  if(scoreOverrides[gw]?.[teamId] !== undefined) return scoreOverrides[gw][teamId];
+  // Locked snapshot
+  if(lockedGWs.has(gw) && gwSnapshots[gw]?.[teamId]) return gwSnapshots[gw][teamId].score;
+  // Historical hardcoded
+  if(HISTORICAL[gw]?.[teamId] !== undefined) return HISTORICAL[gw][teamId];
+  // Live calculation (for current/future GWs)
+  const team=TEAMS.find(t=>t.id===teamId);
+  if(!team) return 0;
+  return bestXI(team).total;
+}
+
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
-function showPage(name, el) {
+function showPage(name,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item,.bn-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   const idx=['matchups','ladder','squads','admin'].indexOf(name);
-  if(idx>=0){
-    document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
-    document.querySelectorAll('.bn-item')[idx]?.classList.add('active');
-  }
+  if(idx>=0){document.querySelectorAll('.nav-item')[idx]?.classList.add('active');document.querySelectorAll('.bn-item')[idx]?.classList.add('active');}
   currentPage=name;
-  if(name==='ladder') renderLadder();
-  if(name==='squads') renderSquads();
-  if(name==='admin')  renderAdmin();
+  if(name==='ladder')renderLadder();
+  if(name==='squads')renderSquads();
+  if(name==='admin')renderAdmin();
 }
 
-// ── GW NAVIGATION ─────────────────────────────────────────────────────────────
-async function changeGW(delta) {
-  const target = selectedGW + delta;
-  if(target < minGW || target > maxGW) return;
-  selectedGW = target;
+async function changeGW(delta){
+  const target=selectedGW+delta;
+  if(target<minGW||target>maxGW)return;
+  selectedGW=target;
   await loadGWData(selectedGW);
+  // Check if this GW should now be snapshotted
+  await checkAndSnapshotGW(selectedGW);
   updateGWNav();
   renderMatchups();
-  if(currentPage==='ladder') renderLadder();
-  if(currentPage==='squads') renderSquads();
+  if(currentPage==='ladder')renderLadder();
+  if(currentPage==='squads')renderSquads();
 }
 
-function updateGWNav() {
-  document.getElementById('gwNum').textContent = 'GW'+selectedGW;
-  const ev = gwEvents[selectedGW];
-  let sub = ev?.is_current ? 'LIVE' : ev?.finished ? 'final' : ev?.is_next ? 'upcoming' : '';
-  if (selectedGW===defaultGW && !sub) sub='latest';
-  document.getElementById('gwSubLabel').textContent = sub;
-  document.getElementById('gwPrev').disabled = selectedGW<=minGW;
-  document.getElementById('gwNext').disabled = selectedGW>=maxGW;
-  dataChecked = gwEvents[selectedGW]?.data_checked ?? false;
-  const badge = document.getElementById('bonusBadge');
-  if(badge){
-    badge.className = dataChecked?'bonus-badge badge-confirmed':'bonus-badge badge-pending';
-    badge.innerHTML = dataChecked?'<div class="pulse-dot"></div><span>Bonus Confirmed</span>':'<div class="pulse-dot"></div><span>Bonus Pending</span>';
-  }
-  document.getElementById('sectionTitle').textContent = `GW${selectedGW} Fixtures`;
+function updateGWNav(){
+  document.getElementById('gwNum').textContent='GW'+selectedGW;
+  const ev=gwEvents[selectedGW];
+  const locked=lockedGWs.has(selectedGW)||HISTORICAL[selectedGW];
+  let sub=ev?.is_current?'LIVE':locked?'locked':ev?.finished?'final':ev?.is_next?'upcoming':'';
+  if(selectedGW===defaultGW&&!sub)sub='latest';
+  document.getElementById('gwSubLabel').textContent=sub;
+  document.getElementById('gwPrev').disabled=selectedGW<=minGW;
+  document.getElementById('gwNext').disabled=selectedGW>=maxGW;
+  dataChecked=gwEvents[selectedGW]?.data_checked??false;
+  const badge=document.getElementById('bonusBadge');
+  if(badge){badge.className=dataChecked?'bonus-badge badge-confirmed':'bonus-badge badge-pending';badge.innerHTML=dataChecked?'<div class="pulse-dot"></div><span>Bonus Confirmed</span>':'<div class="pulse-dot"></div><span>Bonus Pending</span>';}
+  document.getElementById('sectionTitle').textContent=`GW${selectedGW} Fixtures`;
 }
 
 // ── GW DATA ───────────────────────────────────────────────────────────────────
-async function loadGWData(gw) {
-  if(gwCache[gw]){ const c=gwCache[gw]; liveScores=c.liveScores; gkScores=c.gkScores; teamsWithGame=c.teamsWithGame; teamsFinished=c.teamsFinished; return; }
-  const [gwFix, live] = await Promise.all([apiFetch('/api/fixtures/'+gw), apiFetch('/api/live/'+gw)]);
-  const twg=new Set(), tf=new Set();
-  gwFix.forEach(f=>{ twg.add(f.team_h); twg.add(f.team_a); if(f.finished||f.finished_provisional){tf.add(f.team_h);tf.add(f.team_a);} });
-  const ls={}, gks={};
-  live.elements?.forEach(e=>{ const pts=e.stats?.total_points??0; ls[e.id]=pts; const p=playerMap[e.id]; if(p?.type===1){if(!gks[p.teamId])gks[p.teamId]=[]; gks[p.teamId].push({id:e.id,pts,name:p.name}); gks[p.teamId].sort((a,b)=>b.pts-a.pts);} });
+async function loadGWData(gw){
+  if(gwCache[gw]){const c=gwCache[gw];liveScores=c.liveScores;gkScores=c.gkScores;teamsWithGame=c.teamsWithGame;teamsFinished=c.teamsFinished;return;}
+  const[gwFix,live]=await Promise.all([apiFetch('/api/fixtures/'+gw),apiFetch('/api/live/'+gw)]);
+  const twg=new Set(),tf=new Set();
+  gwFix.forEach(f=>{twg.add(f.team_h);twg.add(f.team_a);if(f.finished||f.finished_provisional){tf.add(f.team_h);tf.add(f.team_a);}});
+  const ls={},gks={};
+  live.elements?.forEach(e=>{const pts=e.stats?.total_points??0;ls[e.id]=pts;const p=playerMap[e.id];if(p?.type===1){if(!gks[p.teamId])gks[p.teamId]=[];gks[p.teamId].push({id:e.id,pts,name:p.name});gks[p.teamId].sort((a,b)=>b.pts-a.pts);}});
   gwCache[gw]={liveScores:ls,gkScores:gks,teamsWithGame:twg,teamsFinished:tf};
-  liveScores=ls; gkScores=gks; teamsWithGame=twg; teamsFinished=tf;
+  liveScores=ls;gkScores=gks;teamsWithGame=twg;teamsFinished=tf;
 }
 
 // ── STATUS FLAG ───────────────────────────────────────────────────────────────
-function statusFlag(id) {
-  const p=playerMap[id]; if(!p)return'';
-  const s=p.status; if(s==='a'||!s)return'';
+function statusFlag(id){
+  const p=playerMap[id];if(!p)return'';const s=p.status;if(s==='a'||!s)return'';
   let icon,color;
-  if(s==='i'){icon='🚑';color='#e07060';}
-  else if(s==='d'){icon='⚠️';color='#e2c07a';}
-  else if(s==='s'){icon='🟥';color='#e07060';}
-  else if(s==='u'){icon='❌';color='#6b7a99';}
-  else return'';
+  if(s==='i'){icon='🚑';color='#e07060';}else if(s==='d'){icon='⚠️';color='#e2c07a';}else if(s==='s'){icon='🟥';color='#e07060';}else if(s==='u'){icon='❌';color='#6b7a99';}else return'';
   let tip=(p.news||'').replace(/\.?\s*View player information\.?/gi,'').trim();
-  if(p.chanceThis!=null) tip=p.chanceThis+'% · '+tip;
-  return `<span class="status-flag" style="color:${color}" title="${tip.replace(/"/g,'&quot;')}">${icon}</span>`;
+  if(p.chanceThis!=null)tip=p.chanceThis+'% · '+tip;
+  return`<span class="status-flag" style="color:${color}" title="${tip.replace(/"/g,'&quot;')}">${icon}</span>`;
 }
 
 // ── GK LOGIC ──────────────────────────────────────────────────────────────────
-function getGKResult(team) {
-  const results = team.gk.map(clubName => {
-    const fid=clubNameToId[clubName], clubGKs=(fid!==undefined?gkScores[fid]:null)||[];
-    let pts=0, name=clubName+' GK';
-    if(clubGKs.length>=2&&clubGKs[0].pts>0&&clubGKs[1].pts>0){ pts=clubGKs.reduce((s,g)=>s+g.pts,0); name=clubGKs.map(g=>g.name).join('+'); }
-    else if(clubGKs.length>0){ pts=clubGKs[0].pts; name=clubGKs[0].name; }
-    return {clubName,fid,pts,name,clubGKs};
+function getGKResult(team){
+  const results=team.gk.map(clubName=>{
+    const fid=clubNameToId[clubName],clubGKs=(fid!==undefined?gkScores[fid]:null)||[];
+    let pts=0,name=clubName+' GK';
+    if(clubGKs.length>=2&&clubGKs[0].pts>0&&clubGKs[1].pts>0){pts=clubGKs.reduce((s,g)=>s+g.pts,0);name=clubGKs.map(g=>g.name).join('+');}
+    else if(clubGKs.length>0){pts=clubGKs[0].pts;name=clubGKs[0].name;}
+    return{clubName,fid,pts,name,clubGKs};
   });
   results.sort((a,b)=>b.pts-a.pts);
-  const starter=results[0], bench=results[1]||null;
-  return {pts:starter.pts,name:starter.name,clubName:starter.clubName,statusId:starter.clubGKs[0]?.id??null,
-    bench:bench?{name:bench.name,pts:bench.pts,clubName:bench.clubName,statusId:bench.clubGKs[0]?.id??null}:null};
+  const starter=results[0],bench=results[1]||null;
+  return{pts:starter.pts,name:starter.name,clubName:starter.clubName,statusId:starter.clubGKs[0]?.id??null,bench:bench?{name:bench.name,pts:bench.pts,clubName:bench.clubName,statusId:bench.clubGKs[0]?.id??null}:null};
 }
 
 // ── BEST XI ───────────────────────────────────────────────────────────────────
-function bestXI(team) {
+function bestXI(team){
   const gk=getGKResult(team);
   const sc=id=>liveScores[id]??0;
   const hasGame=id=>{const p=playerMap[id];return p?teamsWithGame.has(p.teamId):false;};
@@ -422,30 +457,47 @@ function bestXI(team) {
   const xiIds=new Set(xiUnsorted.filter(p=>p.id!=='gk').map(p=>p.id));
   const xi=[...xiUnsorted].sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
   const bench=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')].filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
-  return {total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gk,remainingXI:xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length};
+  return{total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gk,remainingXI:xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length};
 }
 
 // ── RENDER MATCHUPS ───────────────────────────────────────────────────────────
-function renderMatchups() {
+function renderMatchups(){
   const fixtures=FIXTURES[selectedGW];
   const posC={GK:'pos-gk',DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
-  const isFinals=selectedGW>=36, dc=gwEvents[selectedGW]?.data_checked??false;
+  const isFinals=selectedGW>=36,dc=gwEvents[selectedGW]?.data_checked??false;
   const isFuture=!gwEvents[selectedGW]?.finished&&!gwEvents[selectedGW]?.is_current;
-  if(!fixtures){ document.getElementById('matchupsBody').innerHTML='<div class="error-state">No fixtures configured for GW'+selectedGW+'.</div>'; return; }
+  const isLocked=lockedGWs.has(selectedGW)||HISTORICAL[selectedGW];
+
+  if(!fixtures){document.getElementById('matchupsBody').innerHTML='<div class="error-state">No fixtures configured for GW'+selectedGW+'.</div>';return;}
+
   const html=fixtures.map((m,i)=>{
     const home=TEAMS.find(t=>t.id===m.home),away=TEAMS.find(t=>t.id===m.away);
-    const hs=bestXI(home),as=bestXI(away);
-    const hc=hs.total>as.total?'winning':hs.total<as.total?'losing':'drawing';
-    const ac=as.total>hs.total?'winning':as.total<hs.total?'losing':'drawing';
+
+    // Use locked/snapshot score if available, else live bestXI
+    let hScore, aScore, hXI=null, aXI=null;
+    if(isLocked && !gwEvents[selectedGW]?.is_current){
+      hScore=getTeamGWScore(m.home,selectedGW);
+      aScore=getTeamGWScore(m.away,selectedGW);
+      // For detail view, use snapshot squad if available
+      hXI = null; aXI = null;
+    } else {
+      const hr=bestXI(home),ar=bestXI(away);
+      hScore=hr.total; aScore=ar.total; hXI=hr; aXI=ar;
+    }
+
+    const hc=hScore>aScore?'winning':hScore<aScore?'losing':'drawing';
+    const ac=aScore>hScore?'winning':aScore<hScore?'losing':'drawing';
     const chip=dc?'<div class="fin-chip">FT ✓</div>':isFinals?'<div class="finals-chip">⭐ Finals</div>':isFuture?'<div class="fin-chip">Upcoming</div>':'<div class="live-chip"><div class="dot"></div>Live</div>';
     const lbl=isFinals?finalsLabel(selectedGW,i):`Match ${i+1} of ${fixtures.length}`;
     const cid='card-'+i;
-    const hRem=!isFuture?(hs.remainingXI>0?`<span class="remaining">${hs.remainingXI} to play</span>`:'<span>XI complete</span>'):'<span>Not started</span>';
-    const aRem=!isFuture?(as.remainingXI>0?`<span class="remaining">${as.remainingXI} to play</span>`:'<span>XI complete</span>'):'<span>Not started</span>';
+    const hRem=!isFuture&&!isLocked?(hXI?.remainingXI>0?`<span class="remaining">${hXI.remainingXI} to play</span>`:'<span>XI complete</span>'):'';
+    const aRem=!isFuture&&!isLocked?(aXI?.remainingXI>0?`<span class="remaining">${aXI.remainingXI} to play</span>`:'<span>XI complete</span>'):'';
+
     const mkRow=(p,bench=false)=>{const notYet=!p.played&&p.hasGame&&p.id!=='gk';const flag=p.id!=='gk'?statusFlag(p.id):'';const club=p.id!=='gk'&&p.club?` <span class="player-club">(${p.club})</span>`:'';return`<div class="player-row ${bench?'bench':''} ${notYet?'not-played':''}"><span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span><span class="player-name">${p.name}${club}${flag}</span><span class="player-pts">${p.pts}</span></div>`;};
     const mkGKB=b=>{if(!b)return'';const flag=b.statusId?statusFlag(b.statusId):'';return`<div class="player-row bench"><span class="pos-tag pos-gk">GK</span><span class="player-name">${b.name} <span class="player-club">(${b.clubName})</span>${flag}</span><span class="player-pts">${b.pts}</span></div>`;};
-    const mkDetail=(t,r)=>`<div class="detail-team-header">${t.short} · ${r.total}pts</div>${r.xi.map(p=>mkRow(p)).join('')}<div class="bench-divider">Bench</div>${mkGKB(r.gk.bench)}${r.bench.slice(0,4).map(p=>mkRow(p,true)).join('')}`;
-    return`<div class="matchup-card" id="${cid}"><div class="card-header" onclick="toggleCard('${cid}')"><span class="match-label">${lbl}</span>${chip}<span class="card-toggle" id="toggle-${cid}">▼</span></div><div class="card-scores" onclick="toggleCard('${cid}')"><div class="team-side left"><div class="team-name-big">${home.name}</div><div class="team-meta team-manager">${home.manager}</div><div class="team-meta">${hRem}</div></div><div class="score-block"><span class="score ${hc}">${hs.total}</span><span class="score-sep">–</span><span class="score ${ac}">${as.total}</span></div><div class="team-side right"><div class="team-name-big">${away.name}</div><div class="team-meta team-manager">${away.manager}</div><div class="team-meta">${aRem}</div></div></div><div class="card-detail" id="detail-${cid}"><div class="detail-inner"><div class="detail-cols"><div>${mkDetail(home,hs)}</div><div>${mkDetail(away,as)}</div></div></div></div></div>`;
+    const mkDetail=(t,r)=>r?`<div class="detail-team-header">${t.short} · ${r.total}pts</div>${r.xi.map(p=>mkRow(p)).join('')}<div class="bench-divider">Bench</div>${mkGKB(r.gk.bench)}${r.bench.slice(0,4).map(p=>mkRow(p,true)).join('')}`:`<div class="detail-team-header">${t.short}</div><div style="padding:12px;font-size:12px;color:var(--muted);text-align:center">Score locked at ${hScore}</div>`;
+
+    return`<div class="matchup-card" id="${cid}"><div class="card-header" onclick="toggleCard('${cid}')"><span class="match-label">${lbl}</span>${chip}<span class="card-toggle" id="toggle-${cid}">▼</span></div><div class="card-scores" onclick="toggleCard('${cid}')"><div class="team-side left"><div class="team-name-big">${home.name}</div><div class="team-meta team-manager">${home.manager}</div><div class="team-meta">${hRem}</div></div><div class="score-block"><span class="score ${hc}">${hScore}</span><span class="score-sep">–</span><span class="score ${ac}">${aScore}</span></div><div class="team-side right"><div class="team-name-big">${away.name}</div><div class="team-meta team-manager">${away.manager}</div><div class="team-meta">${aRem}</div></div></div><div class="card-detail" id="detail-${cid}"><div class="detail-inner"><div class="detail-cols"><div>${mkDetail(home,hXI)}</div><div>${mkDetail(away,aXI)}</div></div></div></div></div>`;
   }).join('');
   document.getElementById('matchupsBody').innerHTML='<div class="matchups-grid">'+html+'</div>';
 }
@@ -453,18 +505,41 @@ function renderMatchups() {
 function toggleCard(cid){const d=document.getElementById('detail-'+cid),t=document.getElementById('toggle-'+cid);const wasOpen=d.classList.contains('open');document.querySelectorAll('.card-detail').forEach(x=>x.classList.remove('open'));document.querySelectorAll('.card-toggle').forEach(x=>x.classList.remove('open'));if(!wasOpen){d.classList.add('open');t.classList.add('open');}}
 function finalsLabel(gw,i){if(gw===36)return i===0?'🏆 Qualifying Final (1v2)':'⚔️ Elimination Final (3v4)';if(gw===37)return'⚔️ Preliminary Final';if(gw===38)return'🏆 Grand Final';return'Match '+(i+1);}
 
-// ── LADDER ────────────────────────────────────────────────────────────────────
-function applyResult(s,hId,aId,hPts,aPts){const h=s[hId],a=s[aId];if(!h||!a)return;h.p++;a.p++;h.f+=hPts;h.a+=aPts;a.f+=aPts;a.a+=hPts;if(hPts>aPts){h.w++;h.pts+=3;h.form.push('W');a.l++;a.form.push('L');}else if(aPts>hPts){a.w++;a.pts+=3;a.form.push('W');h.l++;h.form.push('L');}else{h.d++;h.pts+=1;h.form.push('D');a.d++;a.pts+=1;a.form.push('D');}}
+// ── LADDER (uses locked scores where available) ───────────────────────────────
+function applyResult(s,hId,aId,hPts,aPts){
+  const h=s[hId],a=s[aId];if(!h||!a)return;
+  h.p++;a.p++;h.f+=hPts;h.a+=aPts;a.f+=aPts;a.a+=hPts;
+  if(hPts>aPts){h.w++;h.pts+=3;h.form.push('W');a.l++;a.form.push('L');}
+  else if(aPts>hPts){a.w++;a.pts+=3;a.form.push('W');h.l++;h.form.push('L');}
+  else{h.d++;h.pts+=1;h.form.push('D');a.d++;a.pts+=1;a.form.push('D');}
+}
 
 function renderLadder(){
   const s={};
   TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW30[t.id],name:t.name,short:t.short,manager:t.manager,form:[]};});
-  if(FIXTURES[31]&&HISTORICAL[31])FIXTURES[31].forEach(m=>applyResult(s,m.home,m.away,HISTORICAL[31][m.home]??0,HISTORICAL[31][m.away]??0));
-  const dc=gwEvents[selectedGW]?.data_checked??false;
-  if(dc&&selectedGW>31&&FIXTURES[selectedGW])FIXTURES[selectedGW].forEach(m=>applyResult(s,m.home,m.away,bestXI(TEAMS.find(t=>t.id===m.home)).total,bestXI(TEAMS.find(t=>t.id===m.away)).total));
-  document.getElementById('ladderSubtitle').textContent=dc&&selectedGW>31?`Through GW${selectedGW}`:'Through GW31';
+
+  // Apply all GWs from 31 to selectedGW
+  for(let gw=31; gw<=selectedGW; gw++){
+    const fixtures=FIXTURES[gw]; if(!fixtures) continue;
+    const dc=gwEvents[gw]?.data_checked??false;
+    const isLocked=lockedGWs.has(gw)||HISTORICAL[gw];
+    // Only apply if GW is finished (locked or current with bonus confirmed)
+    if(!isLocked && !(dc && gw===selectedGW)) continue;
+    fixtures.forEach(m=>{
+      const hPts=getTeamGWScore(m.home,gw);
+      const aPts=getTeamGWScore(m.away,gw);
+      applyResult(s,m.home,m.away,hPts,aPts);
+    });
+  }
+
+  const subtitle=`Through GW${selectedGW}`;
+  document.getElementById('ladderSubtitle').textContent=subtitle;
   const sorted=Object.values(s).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
-  const rows=sorted.map((t,i)=>{const pos=i+1,inF=pos<=4;const fd=t.form.slice(-5).map(r=>`<div class="form-dot form-${r.toLowerCase()}"></div>`).join('');return`${pos===5?'<tr class="finals-divider"><td colspan="7">▼ Outside Finals</td></tr>':''}<tr class="ladder-row ${inF?'finals':''} pos-${pos}"><td><span class="pos-num">${pos}</span><span class="ladder-team-name">${t.short}</span><span class="ladder-manager">${t.manager}</span><span class="form-dots">${fd}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td><td class="pts-cell">${t.pts}</td></tr>`;}).join('');
+  const rows=sorted.map((t,i)=>{
+    const pos=i+1,inF=pos<=4;
+    const fd=t.form.slice(-5).map(r=>`<div class="form-dot form-${r.toLowerCase()}"></div>`).join('');
+    return`${pos===5?'<tr class="finals-divider"><td colspan="7">▼ Outside Finals</td></tr>':''}<tr class="ladder-row ${inF?'finals':''} pos-${pos}"><td><span class="pos-num">${pos}</span><span class="ladder-team-name">${t.short}</span><span class="ladder-manager">${t.manager}</span><span class="form-dots">${fd}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td><td class="pts-cell">${t.pts}</td></tr>`;
+  }).join('');
   document.getElementById('ladderBody').innerHTML=`<div class="ladder-card"><table class="ladder-table"><thead><tr><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>F</th><th>PTS</th></tr></thead><tbody>${rows}</tbody></table></div><div style="margin-top:10px;font-size:10px;color:var(--muted);text-align:center">Top 4 qualify for finals · GW36–38</div>`;
 }
 
@@ -475,227 +550,129 @@ function renderSquads(){
     const result=bestXI(team);
     const xiIds=new Set(result.xi.filter(p=>p.id!=='gk').map(p=>p.id));
     const startingClub=result.gk.clubName;
-    const gkRows=team.gk.map(clubName=>{const isStarting=clubName===startingClub;const fid=clubNameToId[clubName];const clubGKs=(fid!==undefined?gkScores[fid]:null)||[];const flag=clubGKs[0]?.id?statusFlag(clubGKs[0].id):'';return`<div class="squad-player-row ${isStarting?'in-xi':'on-bench'}"><div style="display:flex;align-items:center;gap:6px"><span class="pos-tag pos-gk">GK</span><span class="squad-player-name">${clubName}${flag}</span></div></div>`;}).sort((a,b)=>a.includes('in-xi')?-1:1).join('');
-    const mkGroup=(ids,pos,label)=>{const players=ids.map(id=>({id,inXI:xiIds.has(id),name:playerMap[id]?.name??('#'+id),club:playerMap[id]?.teamShort??'',sP:playerMap[id]?.seasonPts??0})).sort((a,b)=>b.sP-a.sP);const rows=players.map(p=>`<div class="squad-player-row ${p.inXI?'in-xi':'on-bench'}"><div style="display:flex;align-items:center;gap:6px"><span class="pos-tag ${posC[pos]}">${pos}</span><span class="squad-player-name">${p.name} <span class="player-club">(${p.club})</span>${statusFlag(p.id)}</span></div><div class="squad-player-right"><span class="squad-season-pts">${p.sP} pts</span></div></div>`).join('');return`<div class="squad-pos-group"><div class="squad-pos-label">${label}</div>${rows}</div>`;};
-    return`<div class="squad-team-card"><div class="squad-team-header"><div><div class="squad-team-name">${team.name}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${team.manager}</div></div><div><div class="squad-xi-score">${result.total}</div><div class="squad-xi-label">GW${selectedGW}</div></div></div><div class="squad-players"><div class="squad-pos-group"><div class="squad-pos-label">Goalkeepers</div>${gkRows}</div>${mkGroup(team.def,'DEF','Defenders')}${mkGroup(team.mid,'MID','Midfielders')}${mkGroup(team.fwd,'FWD','Forwards')}</div></div>`;
+    const gkRows=team.gk.map(clubName=>{const isS=clubName===startingClub;const fid=clubNameToId[clubName];const clubGKs=(fid!==undefined?gkScores[fid]:null)||[];const flag=clubGKs[0]?.id?statusFlag(clubGKs[0].id):'';return`<div class="squad-player-row ${isS?'in-xi':'on-bench'}"><div style="display:flex;align-items:center;gap:6px"><span class="pos-tag pos-gk">GK</span><span class="squad-player-name">${clubName}${flag}</span></div></div>`;}).sort((a,b)=>a.includes('in-xi')?-1:1).join('');
+    const mkG=(ids,pos,label)=>{const players=ids.map(id=>({id,inXI:xiIds.has(id),name:playerMap[id]?.name??('#'+id),club:playerMap[id]?.teamShort??'',sP:playerMap[id]?.seasonPts??0})).sort((a,b)=>b.sP-a.sP);const rows=players.map(p=>`<div class="squad-player-row ${p.inXI?'in-xi':'on-bench'}"><div style="display:flex;align-items:center;gap:6px"><span class="pos-tag ${posC[pos]}">${pos}</span><span class="squad-player-name">${p.name} <span class="player-club">(${p.club})</span>${statusFlag(p.id)}</span></div><div class="squad-player-right"><span class="squad-season-pts">${p.sP} pts</span></div></div>`).join('');return`<div class="squad-pos-group"><div class="squad-pos-label">${label}</div>${rows}</div>`;};
+    return`<div class="squad-team-card"><div class="squad-team-header"><div><div class="squad-team-name">${team.name}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${team.manager}</div></div><div><div class="squad-xi-score">${result.total}</div><div class="squad-xi-label">GW${selectedGW}</div></div></div><div class="squad-players"><div class="squad-pos-group"><div class="squad-pos-label">Goalkeepers</div>${gkRows}</div>${mkG(team.def,'DEF','Defenders')}${mkG(team.mid,'MID','Midfielders')}${mkG(team.fwd,'FWD','Forwards')}</div></div>`;
   }).join('');
   document.getElementById('squadsBody').innerHTML=html;
 }
 
 // ── TEAM ADMIN ────────────────────────────────────────────────────────────────
-function renderAdmin() {
+function renderAdmin(){
   const posC={DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
-  const posLabel={DEF:'Defenders',MID:'Midfielders',FWD:'Forwards'};
-
-  const html = TEAMS.map(team => {
-    const mkPlayerRow = (id, posKey, posType) => {
-      const p = playerMap[id];
-      const name = p?.name ?? ('#'+id);
-      const club = p?.teamShort ?? '';
-      const flag = p ? statusFlag(id) : '';
-      return `<div class="admin-player-row" onclick="openSearch(${team.id},'${posKey}','${posType}')" id="arow-${team.id}-${posKey}">
+  const html=TEAMS.map(team=>{
+    const mkRow=(id,posKey,posType)=>{
+      const p=playerMap[id];const name=p?.name??('#'+id);const club=p?.teamShort??'';const flag=p?statusFlag(id):'';
+      return`<div class="admin-player-row" onclick="toggleSearch(${team.id},'${posKey}','${posType}')" id="arow-${team.id}-${posKey}">
         <span class="pos-tag ${posC[posType]||'pos-def'}">${posType}</span>
-        <div class="admin-player-info">
-          <div class="admin-player-name">${name} <span class="player-club">(${club})</span>${flag}</div>
-          <div class="admin-player-meta">${p?.seasonPts??0} pts season</div>
-        </div>
+        <div class="admin-player-info"><div class="admin-player-name">${name} <span class="player-club">(${club})</span>${flag}</div><div class="admin-player-meta">${p?.seasonPts??0} pts season</div></div>
         <span class="admin-edit-icon">✏️</span>
       </div>`;
     };
-
-    const mkGKRow = (clubName, slot) => {
-      return `<div class="admin-player-row" onclick="openGKSearch(${team.id},${slot})" id="arow-${team.id}-gk${slot}">
-        <span class="pos-tag pos-gk">GK</span>
-        <div class="admin-player-info">
-          <div class="admin-player-name">${clubName}</div>
-          <div class="admin-player-meta">Club goalkeeper</div>
-        </div>
-        <span class="admin-edit-icon">✏️</span>
-      </div>`;
-    };
-
-    const defRows = team.def.map((id,i) => mkPlayerRow(id, `def${i+1}`, 'DEF')).join('');
-    const midRows = team.mid.map((id,i) => mkPlayerRow(id, `mid${i+1}`, 'MID')).join('');
-    const fwdRows = team.fwd.map((id,i) => mkPlayerRow(id, `fwd${i+1}`, 'FWD')).join('');
-    const gkRows  = team.gk.map((club,i) => mkGKRow(club, i+1)).join('');
-
-    return `<div class="admin-team-card">
-      <div class="admin-team-header">
-        <div>
-          <div class="admin-team-name">${team.name}</div>
-          <div class="admin-team-manager">${team.manager}</div>
-        </div>
-      </div>
-      <div class="admin-pos-group">
-        <div class="admin-pos-label">Goalkeepers</div>${gkRows}
-        <div class="admin-pos-label">Defenders</div>${defRows}
-        <div class="admin-pos-label">Midfielders</div>${midRows}
-        <div class="admin-pos-label">Forwards</div>${fwdRows}
-      </div>
+    const mkGKRow=(clubName,slot)=>`<div class="admin-player-row" onclick="toggleGKSearch(${team.id},${slot})" id="arow-${team.id}-gk${slot}">
+      <span class="pos-tag pos-gk">GK</span>
+      <div class="admin-player-info"><div class="admin-player-name">${clubName}</div><div class="admin-player-meta">Club goalkeeper</div></div>
+      <span class="admin-edit-icon">✏️</span>
     </div>`;
+    const defRows=team.def.map((id,i)=>mkRow(id,`def${i+1}`,'DEF')).join('');
+    const midRows=team.mid.map((id,i)=>mkRow(id,`mid${i+1}`,'MID')).join('');
+    const fwdRows=team.fwd.map((id,i)=>mkRow(id,`fwd${i+1}`,'FWD')).join('');
+    const gkRows=team.gk.map((club,i)=>mkGKRow(club,i+1)).join('');
+    return`<div class="admin-team-card"><div class="admin-team-header"><div><div class="admin-team-name">${team.name}</div><div class="admin-team-manager">${team.manager}</div></div></div><div class="admin-pos-group"><div class="admin-pos-label">Goalkeepers</div>${gkRows}<div class="admin-pos-label">Defenders</div>${defRows}<div class="admin-pos-label">Midfielders</div>${midRows}<div class="admin-pos-label">Forwards</div>${fwdRows}</div></div>`;
   }).join('');
-
-  document.getElementById('adminBody').innerHTML = html;
+  document.getElementById('adminBody').innerHTML=html;
 }
 
-// ── SEARCH LOGIC ──────────────────────────────────────────────────────────────
-function openSearch(teamId, posKey, posType) {
+// ── SEARCH (toggle on click, closes on re-click) ──────────────────────────────
+function toggleSearch(teamId, posKey, posType){
+  // If this row is already open, close it
+  if(activeSearch&&activeSearch.teamId===teamId&&activeSearch.posKey===posKey){closeSearch();return;}
   closeSearch();
-  activeSearch = {teamId, posKey, posType, isGK: false};
-  const rowEl = document.getElementById(`arow-${teamId}-${posKey}`);
-  if (!rowEl) return;
+  activeSearch={teamId,posKey,posType,isGK:false};
+  const rowEl=document.getElementById(`arow-${teamId}-${posKey}`);
+  if(!rowEl)return;
   rowEl.classList.add('editing');
-
-  // Filter players by position type
-  const typeMap = {DEF:2, MID:3, FWD:4};
-  const fplType = typeMap[posType];
-
-  const wrap = document.createElement('div');
-  wrap.className = 'player-search-wrap';
-  wrap.id = 'search-wrap';
-  wrap.innerHTML = `
-    <input class="player-search-input" id="searchInput" placeholder="Search ${posType} players..." oninput="filterSearch(${fplType})" autocomplete="off">
-    <div class="player-search-results" id="searchResults"></div>
-    <button class="search-cancel" onclick="closeSearch()">Cancel</button>
-  `;
-  rowEl.insertAdjacentElement('afterend', wrap);
+  const typeMap={DEF:2,MID:3,FWD:4};
+  const fplType=typeMap[posType];
+  const wrap=document.createElement('div');
+  wrap.className='player-search-wrap';wrap.id='search-wrap';
+  wrap.innerHTML=`<input class="player-search-input" id="searchInput" placeholder="Search ${posType} players..." oninput="filterSearch(${fplType})" autocomplete="off"><div class="player-search-results" id="searchResults"></div><button class="search-cancel" onclick="closeSearch()">Cancel</button>`;
+  rowEl.insertAdjacentElement('afterend',wrap);
   document.getElementById('searchInput').focus();
   filterSearch(fplType);
 }
 
-function openGKSearch(teamId, slot) {
+function toggleGKSearch(teamId,slot){
+  if(activeSearch&&activeSearch.teamId===teamId&&activeSearch.posKey===`gk${slot}`){closeSearch();return;}
   closeSearch();
-  activeSearch = {teamId, posKey: `gk${slot}`, slot, isGK: true};
-  const rowEl = document.getElementById(`arow-${teamId}-gk${slot}`);
-  if (!rowEl) return;
+  activeSearch={teamId,posKey:`gk${slot}`,slot,isGK:true};
+  const rowEl=document.getElementById(`arow-${teamId}-gk${slot}`);
+  if(!rowEl)return;
   rowEl.classList.add('editing');
-
-  // For GK search we search PL team names
-  const teamNames = Object.values(Object.fromEntries(
-    Object.entries(clubNameToId).filter(([k]) => !k.match(/^[A-Z]{2,4}$/)) // skip short names
-  )).map(id => {
-    const name = Object.entries(clubNameToId).find(([k,v]) => v===id && k.length > 4)?.[0];
-    return name;
-  }).filter(Boolean).sort();
-
-  const wrap = document.createElement('div');
-  wrap.className = 'player-search-wrap';
-  wrap.id = 'search-wrap';
-  wrap.innerHTML = `
-    <input class="player-search-input" id="searchInput" placeholder="Search club name..." oninput="filterGKSearch()" autocomplete="off">
-    <div class="player-search-results" id="searchResults"></div>
-    <button class="search-cancel" onclick="closeSearch()">Cancel</button>
-  `;
-  rowEl.insertAdjacentElement('afterend', wrap);
+  const wrap=document.createElement('div');
+  wrap.className='player-search-wrap';wrap.id='search-wrap';
+  wrap.innerHTML=`<input class="player-search-input" id="searchInput" placeholder="Search club name..." oninput="filterGKSearch()" autocomplete="off"><div class="player-search-results" id="searchResults"></div><button class="search-cancel" onclick="closeSearch()">Cancel</button>`;
+  rowEl.insertAdjacentElement('afterend',wrap);
   document.getElementById('searchInput').focus();
   filterGKSearch();
 }
 
-function filterSearch(fplType) {
-  const q = document.getElementById('searchInput')?.value.toLowerCase() ?? '';
-  const results = allPlayers
-    .filter(p => p.type === fplType && (q.length < 2 || p.name.toLowerCase().includes(q) || p.teamShort.toLowerCase().includes(q)))
-    .slice(0, 30);
-
-  document.getElementById('searchResults').innerHTML = results.map(p =>
+function filterSearch(fplType){
+  const q=(document.getElementById('searchInput')?.value||'').toLowerCase();
+  const usedIds=getAllUsedPlayerIds();
+  // Group by team, sorted alphabetically by team name
+  const teamGroups={};
+  allPlayers.filter(p=>p.type===fplType&&!usedIds.has(p.id)&&(q.length<2||p.name.toLowerCase().includes(q)||p.teamShort.toLowerCase().includes(q)))
+    .forEach(p=>{if(!teamGroups[p.teamShort])teamGroups[p.teamShort]=[];teamGroups[p.teamShort].push(p);});
+  const sortedTeams=Object.keys(teamGroups).sort();
+  const items=sortedTeams.flatMap(ts=>teamGroups[ts].map(p=>
     `<div class="search-result-item" onclick="selectPlayer(${p.id})">
       <span class="pos-tag ${p.type===2?'pos-def':p.type===3?'pos-mid':'pos-fwd'}">${p.type===2?'DEF':p.type===3?'MID':'FWD'}</span>
-      <div>
-        <div class="search-result-name">${p.name} <span style="font-size:9px;opacity:.5">(${p.teamShort})</span>${statusFlag(p.id)}</div>
-        <div class="search-result-meta">${p.seasonPts} pts season</div>
-      </div>
+      <div><div class="search-result-name">${p.name} <span style="font-size:9px;opacity:.5">(${p.teamShort})</span>${statusFlag(p.id)}</div><div class="search-result-meta">${p.seasonPts} pts season</div></div>
     </div>`
-  ).join('') || '<div style="padding:12px;color:var(--muted);font-size:12px;text-align:center">No players found</div>';
+  ));
+  document.getElementById('searchResults').innerHTML=items.length?items.join(''):'<div style="padding:12px;color:var(--muted);font-size:12px;text-align:center">No available players</div>';
 }
 
-function filterGKSearch() {
-  const q = document.getElementById('searchInput')?.value.toLowerCase() ?? '';
-  const clubs = Object.entries(clubNameToId)
-    .filter(([k]) => k.length > 4 && (q.length < 1 || k.toLowerCase().includes(q)))
-    .sort(([a],[b]) => a.localeCompare(b))
-    .slice(0, 25);
-
-  document.getElementById('searchResults').innerHTML = clubs.map(([name, id]) =>
-    `<div class="search-result-item" onclick="selectGKClub('${name}')">
-      <span class="pos-tag pos-gk">GK</span>
-      <div class="search-result-name">${name}</div>
-    </div>`
-  ).join('') || '<div style="padding:12px;color:var(--muted);font-size:12px;text-align:center">No clubs found</div>';
+function filterGKSearch(){
+  const q=(document.getElementById('searchInput')?.value||'').toLowerCase();
+  const clubs=Object.entries(clubNameToId).filter(([k])=>k.length>4&&(q.length<1||k.toLowerCase().includes(q))).sort(([a],[b])=>a.localeCompare(b)).slice(0,25);
+  document.getElementById('searchResults').innerHTML=clubs.map(([name])=>`<div class="search-result-item" onclick="selectGKClub('${name}')"><span class="pos-tag pos-gk">GK</span><div class="search-result-name">${name}</div></div>`).join('')||'<div style="padding:12px;color:var(--muted);font-size:12px;text-align:center">No clubs found</div>';
 }
 
-async function selectPlayer(playerId) {
-  if (!activeSearch) return;
-  const {teamId, posKey} = activeSearch;
-  closeSearch();
-
-  // Update TEAMS in memory
-  const team = TEAMS.find(t=>t.id===teamId);
-  if (!team) return;
-  if (posKey.startsWith('def')) team.def[parseInt(posKey.replace('def',''))-1] = playerId;
-  else if (posKey.startsWith('mid')) team.mid[parseInt(posKey.replace('mid',''))-1] = playerId;
-  else if (posKey.startsWith('fwd')) team.fwd[parseInt(posKey.replace('fwd',''))-1] = playerId;
-
-  // Clear GW cache so scores recalculate
-  gwCache = {};
-  await loadGWData(selectedGW);
-
-  // Save to DB
-  try {
-    await fetch(`/api/squads/${teamId}`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({position: posKey, player_id: playerId})
-    });
-    showToast('✓ Squad updated');
-  } catch(e) { showToast('⚠ Save failed'); }
-
-  renderAdmin();
-  renderMatchups();
+async function selectPlayer(playerId){
+  if(!activeSearch)return;
+  const{teamId,posKey}=activeSearch;closeSearch();
+  const team=TEAMS.find(t=>t.id===teamId);if(!team)return;
+  if(posKey.startsWith('def'))team.def[parseInt(posKey.replace('def',''))-1]=playerId;
+  else if(posKey.startsWith('mid'))team.mid[parseInt(posKey.replace('mid',''))-1]=playerId;
+  else if(posKey.startsWith('fwd'))team.fwd[parseInt(posKey.replace('fwd',''))-1]=playerId;
+  gwCache={};await loadGWData(selectedGW);
+  try{await fetch(`/api/squads/${teamId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:posKey,player_id:playerId})});showToast('✓ Squad updated');}catch(e){showToast('⚠ Save failed');}
+  renderAdmin();renderMatchups();
 }
 
-async function selectGKClub(clubName) {
-  if (!activeSearch) return;
-  const {teamId, slot} = activeSearch;
-  closeSearch();
-
-  const team = TEAMS.find(t=>t.id===teamId);
-  if (!team) return;
-  team.gk[slot-1] = clubName;
-
-  gwCache = {};
-  await loadGWData(selectedGW);
-
-  try {
-    await fetch(`/api/squads/${teamId}/gk`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({slot, club_name: clubName})
-    });
-    showToast('✓ GK club updated');
-  } catch(e) { showToast('⚠ Save failed'); }
-
-  renderAdmin();
-  renderMatchups();
+async function selectGKClub(clubName){
+  if(!activeSearch)return;
+  const{teamId,slot}=activeSearch;closeSearch();
+  const team=TEAMS.find(t=>t.id===teamId);if(!team)return;
+  team.gk[slot-1]=clubName;
+  gwCache={};await loadGWData(selectedGW);
+  try{await fetch(`/api/squads/${teamId}/gk`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slot,club_name:clubName})});showToast('✓ GK club updated');}catch(e){showToast('⚠ Save failed');}
+  renderAdmin();renderMatchups();
 }
 
-function closeSearch() {
-  document.getElementById('search-wrap')?.remove();
-  document.querySelectorAll('.admin-player-row.editing').forEach(r=>r.classList.remove('editing'));
-  activeSearch = null;
-}
-
-function showToast(msg) {
-  const t = document.getElementById('saveToast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
-}
+function closeSearch(){document.getElementById('search-wrap')?.remove();document.querySelectorAll('.admin-player-row.editing').forEach(r=>r.classList.remove('editing'));activeSearch=null;}
+function showToast(msg){const t=document.getElementById('saveToast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function apiFetch(p){const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();}
 
-function updateGWNavUI() {
+function updateGWNavUI(){
   document.getElementById('gwNum').textContent='GW'+selectedGW;
   const ev=gwEvents[selectedGW];
-  let sub=ev?.is_current?'LIVE':ev?.finished?'final':ev?.is_next?'upcoming':'';
+  const locked=lockedGWs.has(selectedGW)||HISTORICAL[selectedGW];
+  let sub=ev?.is_current?'LIVE':locked?'locked':ev?.finished?'final':ev?.is_next?'upcoming':'';
   if(selectedGW===defaultGW&&!sub)sub='latest';
   document.getElementById('gwSubLabel').textContent=sub;
   document.getElementById('gwPrev').disabled=selectedGW<=minGW;
@@ -707,77 +684,66 @@ function updateGWNavUI() {
 }
 
 // ── INITIAL LOAD ──────────────────────────────────────────────────────────────
-async function loadAll() {
-  const icon = document.getElementById('refreshIcon');
-  if(icon) icon.classList.add('spinning');
-  try {
-    const [boot, savedSquads] = await Promise.all([
-      apiFetch('/api/bootstrap'),
-      apiFetch('/api/squads'),
-    ]);
+async function loadAll(){
+  const icon=document.getElementById('refreshIcon');
+  if(icon)icon.classList.add('spinning');
+  try{
+    const[boot,savedData]=await Promise.all([apiFetch('/api/bootstrap'),apiFetch('/api/squads')]);
 
-    // GW events
-    gwEvents={};
-    boot.events?.forEach(e=>{gwEvents[e.id]=e;});
-    minGW=boot.events?.[0]?.id??1;
-    maxGW=boot.events?.[boot.events.length-1]?.id??38;
+    gwEvents={};boot.events?.forEach(e=>{gwEvents[e.id]=e;});
+    minGW=boot.events?.[0]?.id??1;maxGW=boot.events?.[boot.events.length-1]?.id??38;
     const evCurrent=boot.events?.find(e=>e.is_current);
     const evPrev=boot.events?.find(e=>e.is_previous);
     const evNext=boot.events?.find(e=>e.is_next);
     defaultGW=evCurrent?.id??evPrev?.id??evNext?.id??31;
     selectedGW=defaultGW;
 
-    // Club map
-    clubNameToId={};
-    boot.teams?.forEach(t=>{clubNameToId[t.name]=t.id;clubNameToId[t.short_name]=t.id;});
+    clubNameToId={};boot.teams?.forEach(t=>{clubNameToId[t.name]=t.id;clubNameToId[t.short_name]=t.id;});
+    const teamShortMap={};boot.teams?.forEach(t=>{teamShortMap[t.id]=t.short_name;});
+    boot.elements?.forEach(p=>{playerMap[p.id]={name:p.web_name,type:p.element_type,teamId:p.team,teamShort:teamShortMap[p.team]??'',seasonPts:p.total_points??0,status:p.status??'a',news:p.news??'',chanceThis:p.chance_of_playing_this_round,chanceNext:p.chance_of_playing_next_round};});
+    allPlayers=boot.elements?.filter(p=>[2,3,4].includes(p.element_type)).map(p=>({id:p.id,name:p.web_name,type:p.element_type,teamShort:teamShortMap[p.team]??'',seasonPts:p.total_points??0,status:p.status})).sort((a,b)=>a.teamShort.localeCompare(b.teamShort)||a.name.localeCompare(b.name))??[];
 
-    // Player map + sorted search list
-    const teamShortMap={};
-    boot.teams?.forEach(t=>{teamShortMap[t.id]=t.short_name;});
-    boot.elements?.forEach(p=>{
-      playerMap[p.id]={name:p.web_name,type:p.element_type,teamId:p.team,teamShort:teamShortMap[p.team]??'',seasonPts:p.total_points??0,status:p.status??'a',news:p.news??'',chanceThis:p.chance_of_playing_this_round,chanceNext:p.chance_of_playing_next_round};
-    });
-    allPlayers = boot.elements
-      ?.filter(p=>[2,3,4].includes(p.element_type))
-      .map(p=>({id:p.id,name:p.web_name,type:p.element_type,teamShort:teamShortMap[p.team]??'',seasonPts:p.total_points??0,status:p.status}))
-      .sort((a,b)=>b.seasonPts-a.seasonPts) ?? [];
+    // Load saved data
+    applySquadOverrides(savedData.squads,savedData.gk_clubs);
+    lockedGWs=new Set(savedData.locked_gws||[]);
+    gwSnapshots=savedData.snapshots||{};
+    scoreOverrides=savedData.overrides||{};
 
-    // Apply any saved squad overrides from DB
-    applySquadOverrides(savedSquads.squads, savedSquads.gk_clubs);
-
-    // Load GW data
     await loadGWData(selectedGW);
-    dataChecked=gwEvents[selectedGW]?.data_checked??false;
 
-    updateGWNavUI();
-    renderMatchups();
+    // Check if any recent GWs need snapshotting
+    for(let gw=Math.max(31,selectedGW-3);gw<selectedGW;gw++){
+      if(!lockedGWs.has(gw)&&FIXTURES[gw]&&shouldBeLocked(gw)){
+        if(!gwCache[gw])await loadGWData(gw);
+        await checkAndSnapshotGW(gw);
+      }
+    }
+
+    updateGWNavUI();renderMatchups();
     document.getElementById('metaRow').style.display='flex';
     document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    if(currentPage==='ladder') renderLadder();
-    if(currentPage==='squads') renderSquads();
-    if(currentPage==='admin')  renderAdmin();
+    if(currentPage==='ladder')renderLadder();
+    if(currentPage==='squads')renderSquads();
+    if(currentPage==='admin')renderAdmin();
 
-  } catch(err) {
+  }catch(err){
     document.getElementById('matchupsBody').innerHTML='<div class="error-state"><strong>Could not load FPL data</strong><br>'+err.message+'</div>';
-  } finally {
-    if(icon) icon.classList.remove('spinning');
-  }
+  }finally{if(icon)icon.classList.remove('spinning');}
 }
 
-async function refreshCurrent() {
-  if(!selectedGW) return;
+async function refreshCurrent(){
+  if(!selectedGW)return;
   delete gwCache[selectedGW];
   await loadGWData(selectedGW);
-  dataChecked=gwEvents[selectedGW]?.data_checked??false;
-  updateGWNavUI();
-  renderMatchups();
+  await checkAndSnapshotGW(selectedGW);
+  updateGWNavUI();renderMatchups();
   document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  if(currentPage==='ladder') renderLadder();
-  if(currentPage==='squads') renderSquads();
+  if(currentPage==='ladder')renderLadder();
+  if(currentPage==='squads')renderSquads();
 }
 
 loadAll();
-setInterval(refreshCurrent, 60000);
+setInterval(refreshCurrent,60000);
 </script>
 </body>
 </html>
