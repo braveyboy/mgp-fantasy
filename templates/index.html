@@ -419,14 +419,20 @@ function updateGWNav(){
 
 // ── GW DATA ───────────────────────────────────────────────────────────────────
 async function loadGWData(gw){
-  if(gwCache[gw]){const c=gwCache[gw];liveScores=c.liveScores;gkScores=c.gkScores;teamsWithGame=c.teamsWithGame;teamsFinished=c.teamsFinished;return;}
-  const[gwFix,live]=await Promise.all([apiFetch('/api/fixtures/'+gw),apiFetch('/api/live/'+gw)]);
-  const twg=new Set(),tf=new Set();
-  gwFix.forEach(f=>{twg.add(f.team_h);twg.add(f.team_a);if(f.finished||f.finished_provisional){tf.add(f.team_h);tf.add(f.team_a);}});
-  const ls={},gks={};
-  live.elements?.forEach(e=>{const pts=e.stats?.total_points??0;ls[e.id]=pts;const p=playerMap[e.id];if(p?.type===1){if(!gks[p.teamId])gks[p.teamId]=[];gks[p.teamId].push({id:e.id,pts,name:p.name});gks[p.teamId].sort((a,b)=>b.pts-a.pts);}});
-  gwCache[gw]={liveScores:ls,gkScores:gks,teamsWithGame:twg,teamsFinished:tf};
-  liveScores=ls;gkScores=gks;teamsWithGame=twg;teamsFinished=tf;
+  if(!gwCache[gw]){
+    const[gwFix,live]=await Promise.all([apiFetch('/api/fixtures/'+gw),apiFetch('/api/live/'+gw)]);
+    const twg=new Set(),tf=new Set();
+    gwFix.forEach(f=>{twg.add(f.team_h);twg.add(f.team_a);if(f.finished||f.finished_provisional){tf.add(f.team_h);tf.add(f.team_a);}});
+    const ls={},gks={};
+    live.elements?.forEach(e=>{const pts=e.stats?.total_points??0;ls[e.id]=pts;const p=playerMap[e.id];if(p?.type===1){if(!gks[p.teamId])gks[p.teamId]=[];gks[p.teamId].push({id:e.id,pts,name:p.name});gks[p.teamId].sort((a,b)=>b.pts-a.pts);}});
+    gwCache[gw]={liveScores:ls,gkScores:gks,teamsWithGame:twg,teamsFinished:tf};
+  }
+  // Only write to globals if this is the currently selected GW
+  // (prevents snapshot loop from overwriting live display data)
+  if(gw===selectedGW){
+    const c=gwCache[gw];
+    liveScores=c.liveScores;gkScores=c.gkScores;teamsWithGame=c.teamsWithGame;teamsFinished=c.teamsFinished;
+  }
 }
 
 // ── STATUS FLAG ───────────────────────────────────────────────────────────────
@@ -733,13 +739,19 @@ async function loadAll(){
     scoreOverrides=savedData.overrides||{};
 
     await loadGWData(selectedGW);
-    // Check nearby GWs for snapshotting
+
+    // Check nearby GWs for snapshotting - do NOT let these overwrite global live state
+    // loadGWData sets global liveScores etc, so we must restore selectedGW data afterwards
+    let didSnapshot=false;
     for(let gw=Math.max(31,selectedGW-3);gw<selectedGW;gw++){
       if(!lockedGWs.has(gw)&&FIXTURES[gw]&&shouldBeLocked(gw)){
-        if(!gwCache[gw])await loadGWData(gw);
+        if(!gwCache[gw])await loadGWData(gw); // this overwrites globals temporarily
         await checkAndSnapshotGW(gw);
+        didSnapshot=true;
       }
     }
+    // Always restore the selected GW's data into globals before rendering
+    if(didSnapshot) await loadGWData(selectedGW);
 
     updateGWNav();renderMatchups();
     document.getElementById('metaRow').style.display='flex';
