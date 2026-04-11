@@ -156,7 +156,11 @@
   .admin-team-header{padding:12px 16px;border-bottom:2px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--navy);}
   .admin-team-name{font-size:14px;font-weight:700;color:#fff;}
   .admin-team-manager{font-size:11px;color:rgba(255,255,255,.6);margin-top:2px;}
-  .admin-pos-group{padding:8px 12px;}
+  .admin-pos-group{padding:8px 12px;display:none;}
+  .admin-pos-group.open{display:block;}
+  .admin-team-header{cursor:pointer;}
+  .admin-collapse-icon{margin-left:auto;color:rgba(255,255,255,.6);font-size:14px;transition:transform .25s;display:inline-block;}
+  .admin-collapse-icon.open{transform:rotate(180deg);}
   .admin-pos-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--navy);font-weight:800;margin:10px 0 4px 4px;}
   .admin-player-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;margin-bottom:3px;cursor:pointer;transition:background .15s;background:var(--card-alt);border:1px solid var(--border);}
   .admin-player-row:hover{background:rgba(55,0,60,.06);border-color:var(--navy);}
@@ -287,7 +291,8 @@ let defaultGW=31, selectedGW=31, minGW=1, maxGW=38, gwEvents={};
 let dataChecked=false, currentPage='matchups', gwCache={};
 let lockedGWs=new Set(), gwSnapshots={}, scoreOverrides={};
 let activeSearch=null;
-let openCardId=null; // track which card is open so refresh preserves it
+let openCardId=null;
+let openAdminTeams=new Set(); // track which card is open so refresh preserves it
 
 // ── SQUAD OVERRIDES ───────────────────────────────────────────────────────────
 function applySquadOverrides(savedSquads, savedGKs){
@@ -468,7 +473,10 @@ function bestXI(team){
   const xi=[...xiUnsorted].sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
   // FIX: show ALL bench players, sorted by pts desc
   const bench=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')].filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
-  return{total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gk,remainingXI:xi.filter(p=>p.id!=='gk'&&p.hasGame&&!p.played).length};
+  // Count ALL players in the squad (XI + bench) who have a game but haven't played yet
+  const allOutfield=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')];
+  const remainingAll=allOutfield.filter(p=>p.hasGame&&!p.played).length;
+  return{total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gk,remainingXI:remainingAll};
 }
 
 // ── RENDER MATCHUPS ───────────────────────────────────────────────────────────
@@ -544,14 +552,20 @@ function applyResult(s,hId,aId,hPts,aPts){const h=s[hId],a=s[aId];if(!h||!a)retu
 function renderLadder(){
   const s={};
   TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW30[t.id],name:t.name,short:t.short,manager:t.manager,form:[]};});
-  for(let gw=31;gw<=selectedGW;gw++){
+  let lastCompletedGW=30;
+  for(let gw=31;gw<=38;gw++){
     const fixtures=FIXTURES[gw];if(!fixtures)continue;
-    const dc=gwEvents[gw]?.data_checked??false;
-    const isLocked=lockedGWs.has(gw)||!!HISTORICAL[gw];
-    if(!isLocked&&!(dc&&gw===selectedGW))continue;
+    const dc=gwEvents[gw]?.data_checked??false;         // bonus confirmed
+    const isHistorical=!!HISTORICAL[gw];               // hardcoded historical
+    const isSnapshot=lockedGWs.has(gw)&&!!gwSnapshots[gw]; // snapshotted
+    // Only include if FULLY complete: historical, snapshotted, or data_checked
+    if(!isHistorical&&!isSnapshot&&!dc)continue;
     fixtures.forEach(m=>{applyResult(s,m.home,m.away,getTeamGWScore(m.home,gw),getTeamGWScore(m.away,gw));});
+    lastCompletedGW=gw;
   }
-  document.getElementById('ladderSubtitle').textContent=`Through GW${selectedGW}`;
+  // Show clear label: only completed GWs
+  const subtitle=lastCompletedGW>30?`Completed through GW${lastCompletedGW} · Bonus confirmed only`:'GW31 onwards pending';
+  document.getElementById('ladderSubtitle').textContent=subtitle;
   const sorted=Object.values(s).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
   const rows=sorted.map((t,i)=>{const pos=i+1,inF=pos<=4;const fd=t.form.slice(-5).map(r=>`<div class="form-dot form-${r.toLowerCase()}"></div>`).join('');return`${pos===5?'<tr class="finals-divider"><td colspan="7">▼ Outside Finals</td></tr>':''}<tr class="ladder-row ${inF?'finals':''} pos-${pos}"><td><span class="pos-num">${pos}</span><span class="ladder-team-name">${t.short}</span><span class="ladder-manager">${t.manager}</span><span class="form-dots">${fd}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td><td class="pts-cell">${t.pts}</td></tr>`;}).join('');
   document.getElementById('ladderBody').innerHTML=`<div class="ladder-card"><table class="ladder-table"><thead><tr><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>F</th><th>PTS</th></tr></thead><tbody>${rows}</tbody></table></div><div style="margin-top:10px;font-size:10px;color:var(--muted);text-align:center">Top 4 qualify for finals · GW36–38</div>`;
@@ -581,9 +595,29 @@ function renderAdmin(){
     const midRows=team.mid.map((id,i)=>mkRow(id,`mid${i+1}`,'MID')).join('');
     const fwdRows=team.fwd.map((id,i)=>mkRow(id,`fwd${i+1}`,'FWD')).join('');
     const gkRows=team.gk.map((club,i)=>mkGKRow(club,i+1)).join('');
-    return`<div class="admin-team-card"><div class="admin-team-header"><div><div class="admin-team-name">${team.name}</div><div class="admin-team-manager">${team.manager}</div></div></div><div class="admin-pos-group"><div class="admin-pos-label">Goalkeepers</div>${gkRows}<div class="admin-pos-label">Defenders</div>${defRows}<div class="admin-pos-label">Midfielders</div>${midRows}<div class="admin-pos-label">Forwards</div>${fwdRows}</div></div>`;
+    const isOpen=openAdminTeams.has(team.id);
+    return`<div class="admin-team-card" id="ateam-${team.id}">
+      <div class="admin-team-header" onclick="toggleAdminTeam(${team.id})">
+        <div><div class="admin-team-name">${team.name}</div><div class="admin-team-manager">${team.manager}</div></div>
+        <span class="admin-collapse-icon ${isOpen?'open':''}" id="acol-${team.id}">▼</span>
+      </div>
+      <div class="admin-pos-group ${isOpen?'open':''}" id="apos-${team.id}">
+        <div class="admin-pos-label">Goalkeepers</div>${gkRows}
+        <div class="admin-pos-label">Defenders</div>${defRows}
+        <div class="admin-pos-label">Midfielders</div>${midRows}
+        <div class="admin-pos-label">Forwards</div>${fwdRows}
+      </div>
+    </div>`;
   }).join('');
   document.getElementById('adminBody').innerHTML=html;
+}
+
+function toggleAdminTeam(teamId){
+  if(openAdminTeams.has(teamId)){openAdminTeams.delete(teamId);}else{openAdminTeams.add(teamId);}
+  const posEl=document.getElementById(`apos-${teamId}`);
+  const colEl=document.getElementById(`acol-${teamId}`);
+  if(posEl){posEl.classList.toggle('open',openAdminTeams.has(teamId));}
+  if(colEl){colEl.classList.toggle('open',openAdminTeams.has(teamId));}
 }
 
 // ── SEARCH ────────────────────────────────────────────────────────────────────
