@@ -761,20 +761,29 @@ function filterGKSearch(){
 async function selectPlayer(playerId){
   if(!activeSearch)return;
   const{teamId,posKey}=activeSearch;closeSearch();
+  // Optimistic local update
   const team=TEAMS.find(t=>t.id===teamId);if(!team)return;
   if(posKey.startsWith('def'))team.def[parseInt(posKey.replace('def',''))-1]=playerId;
   else if(posKey.startsWith('mid'))team.mid[parseInt(posKey.replace('mid',''))-1]=playerId;
   else if(posKey.startsWith('fwd'))team.fwd[parseInt(posKey.replace('fwd',''))-1]=playerId;
-  // Clear ALL GW cache so scores recalculate with new squad
   gwCache={};
   await loadGWData(selectedGW);
   try{
-    await fetch(`/api/squads/${teamId}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:posKey,player_id:playerId})});
-    showToast('✓ Squad updated');
-  }catch(e){showToast('⚠ Save failed');}
-  // Re-render all pages with new squad
-  renderAdmin();
-  renderMatchups();
+    // Save to DB — server returns full confirmed squad state
+    const savedData=await fetch(`/api/squads/${teamId}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({position:posKey,player_id:playerId})
+    }).then(r=>r.json());
+    // Re-apply from server response to guarantee no drift
+    applySquadOverrides(savedData.squads,savedData.gk_clubs);
+    gwCache={};
+    await loadGWData(selectedGW);
+    showToast('✓ Saved to database');
+  }catch(e){
+    console.error('Save failed:',e);
+    showToast('⚠ Save failed — change may revert');
+  }
+  renderAdmin();renderMatchups();
   if(currentPage==='ladder')renderLadder();
   if(currentPage==='squads')renderSquads();
 }
@@ -787,9 +796,18 @@ async function selectGKClub(clubName){
   gwCache={};
   await loadGWData(selectedGW);
   try{
-    await fetch(`/api/squads/${teamId}/gk`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slot,club_name:clubName})});
-    showToast('✓ GK club updated');
-  }catch(e){showToast('⚠ Save failed');}
+    const savedData=await fetch(`/api/squads/${teamId}/gk`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({slot,club_name:clubName})
+    }).then(r=>r.json());
+    applySquadOverrides(savedData.squads,savedData.gk_clubs);
+    gwCache={};
+    await loadGWData(selectedGW);
+    showToast('✓ Saved to database');
+  }catch(e){
+    console.error('Save failed:',e);
+    showToast('⚠ Save failed — change may revert');
+  }
   renderAdmin();renderMatchups();
   if(currentPage==='ladder')renderLadder();
   if(currentPage==='squads')renderSquads();
@@ -806,7 +824,12 @@ async function loadAll(){
   const icon=document.getElementById('refreshIcon');
   if(icon)icon.classList.add('spinning');
   try{
-    const[boot,savedData]=await Promise.all([apiFetch('/api/bootstrap'),apiFetch('/api/squads')]);
+    const[boot,savedData]=await Promise.all([
+      apiFetch('/api/bootstrap'),
+      apiFetch('/api/squads'),
+    ]);
+    // Quick health check — logs DB path so we know where data is stored
+    apiFetch('/api/health').then(h=>console.log('DB:',h.db_path,'rows:',h.squad_rows)).catch(()=>{});
     gwEvents={};boot.events?.forEach(e=>{gwEvents[e.id]=e;});
     minGW=boot.events?.[0]?.id??1;maxGW=boot.events?.[boot.events.length-1]?.id??38;
 
