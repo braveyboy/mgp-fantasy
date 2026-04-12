@@ -8,7 +8,12 @@ CORS(app)
 
 FPL = "https://fantasy.premierleague.com/api"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
-DB_PATH = os.environ.get("DB_PATH", "mgp.db")
+
+# Use /opt/render/project/src for persistent storage on Render
+# Falls back to local mgp.db for local dev
+DB_PATH = os.environ.get("DB_PATH", "/opt/render/project/src/mgp.db")
+if not os.path.exists(os.path.dirname(DB_PATH)):
+    DB_PATH = "mgp.db"
 
 # ── DATABASE ───────────────────────────────────────────────────────────────────
 def get_db():
@@ -18,7 +23,6 @@ def get_db():
 
 def init_db():
     with get_db() as conn:
-        # Current squad overrides (only affects future/unlocked GWs)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS squads (
                 team_id   INTEGER NOT NULL,
@@ -37,18 +41,16 @@ def init_db():
                 PRIMARY KEY (team_id, slot)
             )
         """)
-        # Locked GW snapshots — squad + scores frozen at deadline
         conn.execute("""
             CREATE TABLE IF NOT EXISTS gw_snapshots (
                 gw        INTEGER NOT NULL,
                 team_id   INTEGER NOT NULL,
-                squad_json TEXT NOT NULL,   -- full squad at lock time
+                squad_json TEXT NOT NULL,
                 best_xi_score INTEGER NOT NULL,
                 locked_at TEXT DEFAULT (datetime('now')),
                 PRIMARY KEY (gw, team_id)
             )
         """)
-        # Admin score overrides for locked GWs
         conn.execute("""
             CREATE TABLE IF NOT EXISTS score_overrides (
                 gw      INTEGER NOT NULL,
@@ -59,7 +61,6 @@ def init_db():
                 PRIMARY KEY (gw, team_id)
             )
         """)
-        # Track which GWs have been snapshotted
         conn.execute("""
             CREATE TABLE IF NOT EXISTS locked_gws (
                 gw INTEGER PRIMARY KEY,
@@ -94,10 +95,10 @@ def fixtures(gw):
 @app.route("/api/squads", methods=["GET"])
 def get_squads():
     with get_db() as conn:
-        rows    = conn.execute("SELECT team_id, position, player_id FROM squads").fetchall()
-        gk_rows = conn.execute("SELECT team_id, slot, club_name FROM gk_clubs").fetchall()
-        locked  = conn.execute("SELECT gw FROM locked_gws").fetchall()
-        snaps   = conn.execute("SELECT gw, team_id, squad_json, best_xi_score FROM gw_snapshots").fetchall()
+        rows      = conn.execute("SELECT team_id, position, player_id FROM squads").fetchall()
+        gk_rows   = conn.execute("SELECT team_id, slot, club_name FROM gk_clubs").fetchall()
+        locked    = conn.execute("SELECT gw FROM locked_gws").fetchall()
+        snaps     = conn.execute("SELECT gw, team_id, squad_json, best_xi_score FROM gw_snapshots").fetchall()
         overrides = conn.execute("SELECT gw, team_id, score FROM score_overrides").fetchall()
 
     squads = {}
@@ -147,7 +148,8 @@ def update_squad(team_id):
                 player_id=excluded.player_id, updated_at=excluded.updated_at
         """, (team_id, position, player_id))
         conn.commit()
-    return jsonify({"ok": True})
+    # Return the full current squad state so frontend can verify
+    return get_squads()
 
 @app.route("/api/squads/<int:team_id>/gk", methods=["POST"])
 def update_gk_club(team_id):
@@ -164,46 +166,36 @@ def update_gk_club(team_id):
                 club_name=excluded.club_name, updated_at=excluded.updated_at
         """, (team_id, slot, club_name))
         conn.commit()
-    return jsonify({"ok": True})
+    return get_squads()
 
 # ── SNAPSHOT / LOCK API ────────────────────────────────────────────────────────
 @app.route("/api/snapshot", methods=["POST"])
 def save_snapshot():
-    """
-    Called by the frontend when it detects a GW has become locked
-    (next GW deadline has passed). Saves squad + score for each team.
-    Body: { gw, teams: [{team_id, squad_json, best_xi_score}] }
-    """
-    data = request.get_json()
-    gw = data.get("gw")
+    data  = request.get_json()
+    gw    = data.get("gw")
     teams = data.get("teams", [])
-
     if not gw or not teams:
         return jsonify({"error": "Missing gw or teams"}), 400
-
     with get_db() as conn:
-        # Check if already locked
         existing = conn.execute("SELECT gw FROM locked_gws WHERE gw=?", (gw,)).fetchone()
         if existing:
             return jsonify({"ok": True, "already_locked": True})
-
         for t in teams:
             conn.execute("""
                 INSERT OR REPLACE INTO gw_snapshots (gw, team_id, squad_json, best_xi_score)
                 VALUES (?, ?, ?, ?)
             """, (gw, t["team_id"], json.dumps(t["squad"]), t["best_xi_score"]))
-
         conn.execute("INSERT OR IGNORE INTO locked_gws (gw) VALUES (?)", (gw,))
         conn.commit()
-
     return jsonify({"ok": True, "gw": gw, "locked": True})
 
 @app.route("/api/override", methods=["POST"])
 def save_override():
-    """Admin score override for a locked GW"""
-    data = request.get_json()
-    gw, team_id, score = data.get("gw"), data.get("team_id"), data.get("score")
-    note = data.get("note", "")
+    data    = request.get_json()
+    gw      = data.get("gw")
+    team_id = data.get("team_id")
+    score   = data.get("score")
+    note    = data.get("note", "")
     if gw is None or team_id is None or score is None:
         return jsonify({"error": "Missing fields"}), 400
     with get_db() as conn:
@@ -215,6 +207,13 @@ def save_override():
         """, (gw, team_id, score, note))
         conn.commit()
     return jsonify({"ok": True})
+
+# ── HEALTH CHECK ───────────────────────────────────────────────────────────────
+@app.route("/api/health")
+def health():
+    with get_db() as conn:
+        count = conn.execute("SELECT COUNT(*) as c FROM squads").fetchone()["c"]
+    return jsonify({"ok": True, "db_path": DB_PATH, "squad_rows": count})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
