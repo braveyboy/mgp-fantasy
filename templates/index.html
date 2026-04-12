@@ -460,28 +460,59 @@ function getGKResult(team){
 }
 
 // ── BEST XI ───────────────────────────────────────────────────────────────────
-// FIX: bench now shows ALL remaining players (not just slice(0,4))
+// Live mode: only players who have played/are currently playing go in XI
+// Players yet to play sit on bench — XI may have fewer than 11 until GW completes
 function bestXI(team){
   const gk=getGKResult(team);
   const sc=id=>liveScores[id]??0;
   const hasGame=id=>{const p=playerMap[id];return p?teamsWithGame.has(p.teamId):false;};
+  // "played" = team's fixture is finished OR player has scored >0 this GW
   const played=id=>{const p=playerMap[id];return sc(id)>0||(p&&teamsFinished.has(p.teamId));};
-  const mk=(ids,pos)=>ids.map(id=>({id,pts:sc(id),pos,name:playerMap[id]?.name??('#'+id),club:playerMap[id]?.teamShort??'',hasGame:hasGame(id),played:played(id),seasonPts:playerMap[id]?.seasonPts??0}));
+  // "active" = played OR currently in a live fixture (team has game, not yet finished)
+  const active=id=>{const p=playerMap[id];if(!p)return false;if(sc(id)>0)return true;if(teamsFinished.has(p.teamId))return true;// team has started but not finished — player is "in play"
+  return false;};
+  const mk=(ids,pos)=>ids.map(id=>({id,pts:sc(id),pos,name:playerMap[id]?.name??('#'+id),club:playerMap[id]?.teamShort??'',hasGame:hasGame(id),played:played(id),active:active(id),seasonPts:playerMap[id]?.seasonPts??0}));
   const sort=arr=>[...arr].sort((a,b)=>b.pts-a.pts);
-  const sd=sort(mk(team.def,'DEF')),sm=sort(mk(team.mid,'MID')),sf=sort(mk(team.fwd,'FWD'));
-  const gkEntry={id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:'',hasGame:false,played:true,seasonPts:0};
-  const mandatory=[...sd.slice(0,3),...sm.slice(0,3),...sf.slice(0,1)];
+
+  const allDef=mk(team.def,'DEF'),allMid=mk(team.mid,'MID'),allFwd=mk(team.fwd,'FWD');
+  const allOutfield=[...allDef,...allMid,...allFwd];
+
+  // Split into "counted" (played/active) and "pending" (yet to play)
+  const counted=p=>played(p.id);
+
+  const cntDef=sort(allDef.filter(p=>counted(p))),pendDef=allDef.filter(p=>!counted(p));
+  const cntMid=sort(allMid.filter(p=>counted(p))),pendMid=allMid.filter(p=>!counted(p));
+  const cntFwd=sort(allFwd.filter(p=>counted(p))),pendFwd=allFwd.filter(p=>!counted(p));
+
+  // GK: use normal logic (best scoring club keeper counts)
+  const gkEntry={id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:'',hasGame:false,played:true,active:true,seasonPts:0};
+
+  // Mandatory minimums from counted players only (1 GK already done)
+  // Min 3 DEF, 3 MID, 1 FWD — but only from players who have played
+  const mandDef=cntDef.slice(0,3),mandMid=cntMid.slice(0,3),mandFwd=cntFwd.slice(0,1);
+  const mandatory=[...mandDef,...mandMid,...mandFwd];
   const usedIds=new Set(mandatory.map(p=>p.id));
-  const flex=[...sd.slice(3),...sm.slice(3),...sf.slice(1)].filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
+
+  // Flex spots: best remaining counted players (up to 3), no 2nd GK
+  const flexPool=[...cntDef.slice(3),...cntMid.slice(3),...cntFwd.slice(1)]
+    .filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
+
   const posOrder={GK:0,DEF:1,MID:2,FWD:3};
-  const xiUnsorted=[gkEntry,...mandatory,...flex];
+  const xiUnsorted=[gkEntry,...mandatory,...flexPool];
   const xiIds=new Set(xiUnsorted.filter(p=>p.id!=='gk').map(p=>p.id));
   const xi=[...xiUnsorted].sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
-  // FIX: show ALL bench players, sorted by pts desc
-  const bench=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')].filter(p=>!xiIds.has(p.id)).sort((a,b)=>b.pts-a.pts);
-  // Count ALL players in the squad (XI + bench) who have a game but haven't played yet
-  const allOutfield=[...mk(team.def,'DEF'),...mk(team.mid,'MID'),...mk(team.fwd,'FWD')];
-  const remainingAll=allOutfield.filter(p=>p.hasGame&&!p.played).length;
+
+  // Bench = all outfield not in XI (includes pending players), sorted: pending first then by pts
+  const bench=allOutfield.filter(p=>!xiIds.has(p.id))
+    .sort((a,b)=>{
+      // Pending (yet to play) players at top of bench — they may still contribute
+      const aPending=!counted(a),bPending=!counted(b);
+      if(aPending&&!bPending)return-1;
+      if(!aPending&&bPending)return 1;
+      return b.pts-a.pts;
+    });
+
+  const remainingAll=allOutfield.filter(p=>p.hasGame&&!played(p.id)).length;
   return{total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gk,remainingXI:remainingAll};
 }
 
@@ -573,8 +604,64 @@ function renderLadder(){
   const subtitle=lastCompletedGW>30?`Completed through GW${lastCompletedGW} · Bonus confirmed only`:'GW31 onwards pending';
   document.getElementById('ladderSubtitle').textContent=subtitle;
   const sorted=Object.values(s).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
-  const rows=sorted.map((t,i)=>{const pos=i+1,inF=pos<=4;const fd=t.form.slice(-5).map(r=>`<div class="form-dot form-${r.toLowerCase()}"></div>`).join('');return`${pos===5?'<tr class="finals-divider"><td colspan="7">▼ Outside Finals</td></tr>':''}<tr class="ladder-row ${inF?'finals':''} pos-${pos}"><td><span class="pos-num">${pos}</span><span class="ladder-team-name">${t.short}</span><span class="ladder-manager">${t.manager}</span><span class="form-dots">${fd}</span></td><td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td><td class="pts-cell">${t.pts}</td></tr>`;}).join('');
-  document.getElementById('ladderBody').innerHTML=`<div class="ladder-card"><table class="ladder-table"><thead><tr><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>F</th><th>PTS</th></tr></thead><tbody>${rows}</tbody></table></div><div style="margin-top:10px;font-size:10px;color:var(--muted);text-align:center">Top 4 qualify for finals · GW36–38</div>`;
+  const rows=sorted.map((t,i)=>{
+    const pos=i+1,inF=pos<=4;
+    const gd=t.f-t.a;
+    const gdStr=(gd>0?'+':'')+gd;
+    const fd=t.form.slice(-5).map(r=>`<div class="form-dot form-${r.toLowerCase()}"></div>`).join('');
+    return`${pos===5?'<tr class="finals-divider"><td colspan="9">▼ Outside Finals Top 4</td></tr>':''}
+    <tr class="ladder-row ${inF?'finals':''} pos-${pos}">
+      <td><span class="pos-num">${pos}</span><span class="ladder-team-name">${t.short}</span><span class="ladder-manager">${t.manager}</span><span class="form-dots">${fd}</span></td>
+      <td>${t.p}</td><td>${t.w}</td><td>${t.d}</td><td>${t.l}</td><td>${t.f}</td><td>${t.a}</td>
+      <td style="color:${gd>0?'#00a855':gd<0?'#e74c3c':'#6b7280'}">${gdStr}</td>
+      <td class="pts-cell">${t.pts}</td>
+    </tr>`;
+  }).join('');
+  // Finals placeholder section
+  const sorted2=[...Object.values(s)].sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
+  const top4=sorted2.slice(0,4);
+  const finalsHtml=`
+    <div style="margin-top:20px">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;color:var(--navy);margin-bottom:12px">Finals</div>
+      <div class="ladder-card" style="margin-bottom:10px">
+        <div style="padding:10px 14px;background:var(--navy);color:#00ff87;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">GW36 · Qualifying Final</div>
+        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">${top4[0]?.short??'1st Place'}</span>
+          <span style="font-size:10px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">Winner → Grand Final</span>
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">${top4[1]?.short??'2nd Place'}</span>
+        </div>
+        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">${top4[2]?.short??'3rd Place'}</span>
+          <span style="font-size:10px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">Loser eliminated</span>
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">${top4[3]?.short??'4th Place'}</span>
+        </div>
+      </div>
+      <div class="ladder-card" style="margin-bottom:10px">
+        <div style="padding:10px 14px;background:var(--navy);color:#00ff87;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">GW37 · Preliminary Final</div>
+        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">Qualifying Loser</span>
+          <span style="font-size:10px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">Winner → Grand Final</span>
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">Elim. Winner</span>
+        </div>
+      </div>
+      <div class="ladder-card">
+        <div style="padding:10px 14px;background:linear-gradient(135deg,#37003c,#5c0064);color:#00ff87;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">GW38 · 🏆 Grand Final</div>
+        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">Qualifying Winner</span>
+          <span style="font-size:11px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">🏆 Champion</span>
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">Prelim Winner</span>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('ladderBody').innerHTML=`
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px">
+      📊 Completed GWs only · Updates when bonus points confirmed
+    </div>
+    <div class="ladder-card"><table class="ladder-table">
+      <thead><tr><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>F</th><th>A</th><th>GD</th><th>PTS</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>${finalsHtml}`;
 }
 
 // ── SQUADS ────────────────────────────────────────────────────────────────────
@@ -764,17 +851,25 @@ async function loadAll(){
   }finally{if(icon)icon.classList.remove('spinning');}
 }
 
-// FIX: refresh only updates data, doesn't destroy open card state
 async function refreshCurrent(){
   if(!selectedGW)return;
-  delete gwCache[selectedGW];
-  await loadGWData(selectedGW);
-  await checkAndSnapshotGW(selectedGW);
-  updateGWNav();
-  renderMatchups(); // openCardId is preserved so card stays open
-  document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  if(currentPage==='ladder')renderLadder();
-  if(currentPage==='squads')renderSquads();
+  try{
+    // Always re-fetch squad overrides so admin changes never revert
+    const savedData=await apiFetch('/api/squads');
+    applySquadOverrides(savedData.squads,savedData.gk_clubs);
+    lockedGWs=new Set(savedData.locked_gws||[]);
+    gwSnapshots=savedData.snapshots||{};
+    scoreOverrides=savedData.overrides||{};
+    delete gwCache[selectedGW];
+    await loadGWData(selectedGW);
+    await checkAndSnapshotGW(selectedGW);
+    updateGWNav();
+    renderMatchups();
+    document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    if(currentPage==='ladder')renderLadder();
+    if(currentPage==='squads')renderSquads();
+    if(currentPage==='admin')renderAdmin();
+  }catch(e){console.warn('Refresh failed:',e);}
 }
 
 loadAll();
