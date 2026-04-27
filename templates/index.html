@@ -75,24 +75,21 @@
   .live-chip .dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 1.5s ease-in-out infinite;}
   .fin-chip{background:#6b7280;border:none;color:#fff;font-size:9px;padding:3px 8px;border-radius:4px;letter-spacing:1px;text-transform:uppercase;font-weight:700;}
   .finals-chip{background:var(--navy);border:none;color:#00ff87;font-size:9px;padding:3px 8px;border-radius:4px;letter-spacing:1px;text-transform:uppercase;font-weight:700;}
-
-  /* FIX 1: Mobile score layout - prevent overflow */
-  .card-scores{padding:12px 8px 10px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:4px;cursor:pointer;min-width:0;overflow:hidden;}
-  .team-side{display:flex;flex-direction:column;gap:5px;min-width:0;}
+  .card-scores{padding:10px 12px;cursor:pointer;min-width:0;width:100%;}
+  .card-scores-names{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;}
+  .team-side{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}
   .team-side.right{align-items:flex-end;text-align:right;}
-  .team-name-big{font-size:12px;font-weight:700;color:var(--navy);line-height:1.2;word-break:break-word;hyphens:auto;}
-  .team-meta{font-size:11px;color:var(--muted);}.team-meta .remaining{color:var(--navy);font-weight:700;}.team-manager{font-size:11px;color:var(--navy-mid);font-weight:600;letter-spacing:.2px;}.ladder-team-name{font-size:13px;font-weight:700;color:var(--navy);}.ladder-manager{font-size:10px;color:var(--muted);margin-left:5px;}
+  .team-name-big{font-size:13px;font-weight:700;color:var(--navy);line-height:1.3;word-break:break-word;hyphens:auto;}
+  .team-meta{font-size:11px;color:var(--muted);}
   .team-meta .remaining{color:var(--gold);font-weight:600;}
-  .score-block{display:flex;align-items:center;gap:4px;flex-shrink:0;}
-  /* FIX 1 continued: smaller score font on mobile */
-  .score{font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;min-width:32px;text-align:center;transition:color .3s;}
-  @media(min-width:400px){.score{font-size:38px;min-width:40px;}}
+  .team-manager{font-size:11px;color:var(--navy-mid);font-weight:600;}
+  .card-scores-score{display:flex;justify-content:center;align-items:center;padding:4px 0;}
+  .score-block{display:flex;align-items:center;gap:6px;}
+  .score{font-family:'Bebas Neue',sans-serif;font-size:36px;line-height:1;min-width:44px;text-align:center;transition:color .3s;}
   .score.winning{color:var(--navy);}
   .score.losing{color:#9ca3af;}
   .score.drawing{color:var(--navy);}
-  .score-sep{font-family:'Bebas Neue',sans-serif;font-size:22px;color:#d1d5db;line-height:1;}
-  @media(min-width:400px){.score-sep{font-size:28px;}}
-
+  .score-sep{font-family:'Bebas Neue',sans-serif;font-size:28px;color:#d1d5db;line-height:1;}
   .card-detail{max-height:0;overflow:hidden;transition:max-height .4s ease;}
   .card-detail.open{max-height:3000px;}
   .detail-inner{padding:12px 12px 14px;border-top:2px solid var(--border);background:var(--card-alt);}
@@ -295,11 +292,8 @@ const HISTORICAL={31:{1:26,2:49,3:40,4:44,5:57,6:46,7:51,8:54}};
 
 let playerMap={},allPlayers=[],liveScores={},gkScores={};
 let teamsWithGame=new Set(),teamsFinished=new Set(),clubNameToId={};
-// FIX 2: track which PL team IDs had double gameweeks this GW
 let doubleGWTeamIds=new Set();
-// FIX 2: per-player fixture breakdown: {playerId: [{pts, fixtureId}]}
 let playerFixtureScores={};
-
 let defaultGW=31,selectedGW=31,minGW=1,maxGW=38,gwEvents={};
 let dataChecked=false,currentPage='matchups',gwCache={};
 let lockedGWs=new Set(),gwSnapshots={},scoreOverrides={};
@@ -415,13 +409,10 @@ function updateGWNav(){
   document.getElementById('sectionTitle').textContent=`GW${selectedGW} Fixtures`;
 }
 
-// FIX 2: loadGWData now also fetches per-player fixture breakdown to detect double GWs
 async function loadGWData(gw){
   if(!gwCache[gw]){
     const[gwFix,live]=await Promise.all([apiFetch('/api/fixtures/'+gw),apiFetch('/api/live/'+gw)]);
-
     const twg=new Set(),tf=new Set();
-    // Count how many fixtures each PL team has this GW
     const plTeamFixtureCount={};
     gwFix.forEach(f=>{
       twg.add(f.team_h);twg.add(f.team_a);
@@ -429,11 +420,8 @@ async function loadGWData(gw){
       plTeamFixtureCount[f.team_h]=(plTeamFixtureCount[f.team_h]||0)+1;
       plTeamFixtureCount[f.team_a]=(plTeamFixtureCount[f.team_a]||0)+1;
     });
-
-    // Which PL teams have 2+ fixtures = double GW
     const dgwTeams=new Set();
     Object.entries(plTeamFixtureCount).forEach(([tid,count])=>{if(count>=2)dgwTeams.add(parseInt(tid));});
-
     const ls={},gks={},pfs={};
     live.elements?.forEach(e=>{
       const pts=e.stats?.total_points??0;
@@ -444,7 +432,6 @@ async function loadGWData(gw){
         gks[p.teamId].push({id:e.id,pts,name:p.name});
         gks[p.teamId].sort((a,b)=>b.pts-a.pts);
       }
-      // FIX 2: if player's PL team had a double GW, store per-fixture breakdown
       if(p&&dgwTeams.has(p.teamId)&&e.explain){
         const fixtureScores=[];
         e.explain.forEach(ex=>{
@@ -454,7 +441,6 @@ async function loadGWData(gw){
         if(fixtureScores.length>=2)pfs[e.id]=fixtureScores;
       }
     });
-
     gwCache[gw]={liveScores:ls,gkScores:gks,teamsWithGame:twg,teamsFinished:tf,doubleGWTeamIds:dgwTeams,playerFixtureScores:pfs};
   }
   if(gw===selectedGW){
@@ -476,23 +462,37 @@ function statusFlag(id){
 
 function getGKResult(team){
   const results=team.gk.map(clubName=>{
-    const fid=clubNameToId[clubName],clubGKs=(fid!==undefined?gkScores[fid]:null)||[];
+    const fid=clubNameToId[clubName];
+    const clubGKs=(fid!==undefined?gkScores[fid]:null)||[];
+    const isDoubleGWClub=fid!==undefined&&doubleGWTeamIds.has(fid);
     let pts=0,name=clubName+' GK';
-    // FIX 2: if both keepers played same match (injury sub), combine scores
-    if(clubGKs.length>=2&&clubGKs[0].pts>0&&clubGKs[1].pts>0){
+    if(clubGKs.length===0){
+      pts=0;name=clubName+' GK';
+    } else if(isDoubleGWClub){
+      // Double GW: just take the single best keeper, never combine
+      const best=clubGKs[0];
+      pts=best.pts;name=best.name;
+    } else if(clubGKs.length>=2&&clubGKs[0].pts>0&&clubGKs[1].pts>0){
+      // Single GW, both keepers scored = injury sub, combine
       pts=clubGKs.reduce((s,g)=>s+g.pts,0);
       name=clubGKs.map(g=>g.name).join('+');
-    } else if(clubGKs.length>0){
+    } else {
+      // Normal: take highest
       pts=clubGKs[0].pts;name=clubGKs[0].name;
     }
     return{clubName,fid,pts,name,clubGKs};
   });
   results.sort((a,b)=>b.pts-a.pts);
   const starter=results[0],bench=results[1]||null;
-  return{pts:starter.pts,name:starter.name,clubName:starter.clubName,statusId:starter.clubGKs[0]?.id??null,bench:bench?{name:bench.name,pts:bench.pts,clubName:bench.clubName,statusId:bench.clubGKs[0]?.id??null}:null};
+  return{
+    pts:starter.pts,
+    name:starter.name,
+    clubName:starter.clubName,
+    statusId:starter.clubGKs[0]?.id??null,
+    bench:bench?{name:bench.name,pts:bench.pts,clubName:bench.clubName,statusId:bench.clubGKs[0]?.id??null}:null
+  };
 }
 
-// FIX 2: bestXI now expands double GW players into two separate score entries
 function bestXI(team){
   const gk=getGKResult(team);
   const sc=id=>liveScores[id]??0;
@@ -502,7 +502,6 @@ function bestXI(team){
   const gkClubFid=clubNameToId[gk.clubName];
   const gkEntry={id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:gk.clubName,hasGame:false,played:true,active:true,seasonPts:0,isDouble:false};
 
-  // Build outfield entries — double GW players become two entries
   const outfieldEntries=[];
   const addPlayers=(ids,pos)=>{
     ids.forEach(id=>{
@@ -510,20 +509,12 @@ function bestXI(team){
       const fixScores=playerFixtureScores[id];
       const isDouble=!!(fixScores&&fixScores.length>=2);
       if(isDouble){
-        // Two separate entries, each with their own fixture score
         fixScores.forEach((fx,i)=>{
           outfieldEntries.push({
-            id:`${id}_fx${i}`,
-            realId:id,
-            pts:fx.pts,
-            pos,
-            name:p?.name??('#'+id),
-            club:p?.teamShort??'',
-            hasGame:true,
-            played:true,
-            active:true,
-            seasonPts:p?.seasonPts??0,
-            isDouble:true,
+            id:`${id}_fx${i}`,realId:id,pts:fx.pts,pos,
+            name:p?.name??('#'+id),club:p?.teamShort??'',
+            hasGame:true,played:true,active:true,
+            seasonPts:p?.seasonPts??0,isDouble:true,
             doubleLabel:`(${i+1}/${fixScores.length})`,
           });
         });
@@ -546,11 +537,8 @@ function bestXI(team){
   const sort=arr=>[...arr].sort((a,b)=>b.pts-a.pts);
 
   const cntDef=sort(outfieldEntries.filter(p=>p.pos==='DEF'&&counted(p)));
-  const pendDef=outfieldEntries.filter(p=>p.pos==='DEF'&&!counted(p));
   const cntMid=sort(outfieldEntries.filter(p=>p.pos==='MID'&&counted(p)));
-  const pendMid=outfieldEntries.filter(p=>p.pos==='MID'&&!counted(p));
   const cntFwd=sort(outfieldEntries.filter(p=>p.pos==='FWD'&&counted(p)));
-  const pendFwd=outfieldEntries.filter(p=>p.pos==='FWD'&&!counted(p));
 
   const mandatory=[...cntDef.slice(0,3),...cntMid.slice(0,3),...cntFwd.slice(0,1)];
   const usedIds=new Set(mandatory.map(p=>p.id));
@@ -562,11 +550,10 @@ function bestXI(team){
   const xiIds=new Set(xiUnsorted.filter(p=>p.id!=='gk').map(p=>p.id));
   const xi=[...xiUnsorted].sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
 
+  // FIX: bench always ordered DEF → MID → FWD then by score within position
   const bench=outfieldEntries.filter(p=>!xiIds.has(p.id))
     .sort((a,b)=>{
-      const aPending=!counted(a),bPending=!counted(b);
-      if(aPending&&!bPending)return-1;
-      if(!aPending&&bPending)return 1;
+      if(posOrder[a.pos]!==posOrder[b.pos])return posOrder[a.pos]-posOrder[b.pos];
       return b.pts-a.pts;
     });
 
@@ -603,7 +590,7 @@ function renderMatchups(){
 
     const mkRow=(p,bench=false)=>{
       const notYet=!p.played&&p.hasGame&&p.id!=='gk'&&!p.isDouble;
-      const flag=p.realId&&p.realId!=='gk'?statusFlag(p.realId):'';
+      const flag=p.realId&&p.realId!=='gk'&&typeof p.realId==='number'?statusFlag(p.realId):'';
       const club=p.club?` <span class="player-club">(${p.club})</span>`:'';
       const upcoming=bench&&notYet?'<span style="font-size:10px;margin-left:3px;color:#f59e0b" title="Yet to play">⏱</span>':'';
       const dblTag=p.isDouble?`<span class="double-tag">×2</span>`:'';
@@ -622,9 +609,25 @@ function renderMatchups(){
         <span class="card-toggle ${isOpen?'open':''}" id="toggle-${cid}">▼</span>
       </div>
       <div class="card-scores" onclick="toggleCard('${cid}')">
-        <div class="team-side left"><div class="team-name-big">${home.name}</div><div class="team-meta team-manager">${home.manager}</div><div class="team-meta">${hRem}</div></div>
-        <div class="score-block"><span class="score ${hc}">${hScore}</span><span class="score-sep">–</span><span class="score ${ac}">${aScore}</span></div>
-        <div class="team-side right"><div class="team-name-big">${away.name}</div><div class="team-meta team-manager">${away.manager}</div><div class="team-meta">${aRem}</div></div>
+        <div class="card-scores-names">
+          <div class="team-side left">
+            <div class="team-name-big">${home.name}</div>
+            <div class="team-manager">${home.manager}</div>
+            <div class="team-meta">${hRem}</div>
+          </div>
+          <div class="team-side right">
+            <div class="team-name-big">${away.name}</div>
+            <div class="team-manager">${away.manager}</div>
+            <div class="team-meta">${aRem}</div>
+          </div>
+        </div>
+        <div class="card-scores-score">
+          <div class="score-block">
+            <span class="score ${hc}">${hScore}</span>
+            <span class="score-sep">–</span>
+            <span class="score ${ac}">${aScore}</span>
+          </div>
+        </div>
       </div>
       <div class="card-detail ${isOpen?'open':''}" id="detail-${cid}">
         <div class="detail-inner"><div class="detail-cols"><div>${mkDetail(home,hXI)}</div><div>${mkDetail(away,aXI)}</div></div></div>
