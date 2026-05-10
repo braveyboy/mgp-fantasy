@@ -336,9 +336,9 @@ function computeLadderRankings(){
 // GW38: QF Winner vs PF Winner (Grand Final)
 function getFinalsFixtures(gw){
   // Use final regular season standings for seeding — never changes
-  const seedOrder=Object.values(STANDINGS_REGULAR_SEASON_FINAL)
-    .sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a))
-    .map(t=>t.id);
+const seedOrder=Object.entries(STANDINGS_REGULAR_SEASON_FINAL)
+    .sort(([,a],[,b])=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a))
+    .map(([id])=>parseInt(id));
   const p1=seedOrder[0],p2=seedOrder[1],p3=seedOrder[2],p4=seedOrder[3];
 
   if(gw===FINALS_START_GW){
