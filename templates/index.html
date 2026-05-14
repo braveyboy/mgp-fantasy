@@ -39,9 +39,6 @@
   .logo-text{display:flex;flex-direction:column;line-height:1;}
   .logo-main{font-family:'Bebas Neue',sans-serif;font-size:20px;color:#00ff87;letter-spacing:1.5px;}
   .logo-sub{font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:2px;text-transform:uppercase;margin-top:2px;}
-  .gw-pill{background:var(--navy-light);border:1px solid var(--border-hi);border-radius:20px;padding:5px 12px;display:flex;align-items:center;gap:6px;flex-shrink:0;}
-  .gw-pill .label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;}
-  .gw-pill .num{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--gold);line-height:1;}
   nav{position:relative;z-index:10;padding:0 20px;background:var(--navy-mid);border-bottom:2px solid rgba(0,255,135,0.3);}
   .nav-inner{max-width:720px;margin:0 auto;display:flex;}
   .nav-item{padding:10px 14px;font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.6);cursor:pointer;border-bottom:2px solid transparent;font-weight:600;transition:color .2s,border-color .2s;}
@@ -79,7 +76,10 @@
   .team-side{display:flex;flex-direction:column;gap:5px;}
   .team-side.right{align-items:flex-end;text-align:right;}
   .team-name-big{font-size:13px;font-weight:700;color:var(--navy);line-height:1.2;word-break:break-word;hyphens:auto;}
-  .team-meta{font-size:11px;color:var(--muted);}.team-meta .remaining{color:var(--navy);font-weight:700;}.team-manager{font-size:11px;color:var(--navy-mid);font-weight:600;letter-spacing:.2px;}.ladder-team-name{font-size:13px;font-weight:700;color:var(--navy);}.ladder-manager{font-size:10px;color:var(--muted);margin-left:5px;}
+  .team-meta{font-size:11px;color:var(--muted);}.team-meta .remaining{color:var(--navy);font-weight:700;}
+  .team-manager{font-size:11px;color:var(--navy-mid);font-weight:600;letter-spacing:.2px;}
+  .ladder-team-name{font-size:13px;font-weight:700;color:var(--navy);}
+  .ladder-manager{font-size:10px;color:var(--muted);margin-left:5px;}
   .team-meta .remaining{color:var(--gold);font-weight:600;}
   .score-block{display:flex;align-items:center;gap:6px;flex-shrink:0;}
   .score{font-family:'Bebas Neue',sans-serif;font-size:38px;line-height:1;min-width:40px;text-align:center;transition:color .3s;}
@@ -93,15 +93,14 @@
   .detail-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   .detail-team-header{font-size:10px;font-weight:700;color:var(--navy);letter-spacing:.5px;text-transform:uppercase;margin-bottom:7px;padding-bottom:5px;border-bottom:2px solid var(--navy);}
   .player-row{display:flex;align-items:center;gap:5px;padding:4px 2px;border-bottom:1px solid rgba(0,0,0,.06);}
-  .player-row.bench{opacity:.5;}  .player-row.bench-upcoming{opacity:.75;background:rgba(245,158,11,.06);border-radius:4px;}
+  .player-row.bench{opacity:.5;}.player-row.bench-upcoming{opacity:.75;background:rgba(245,158,11,.06);border-radius:4px;}
   .player-row.not-played .player-pts{color:var(--muted);opacity:.6;}
   .pos-tag{font-size:8px;padding:2px 4px;border-radius:3px;font-weight:700;letter-spacing:.3px;flex-shrink:0;color:rgba(255,255,255,.85);}
-  .pos-gk{background:#d4a017;color:#fff;}
-  .pos-def{background:#01b4e4;color:#fff;}
-  .pos-mid{background:#00a86b;color:#fff;}
-  .pos-fwd{background:#e74c3c;color:#fff;}
+  .pos-gk{background:#d4a017;color:#fff;}.pos-def{background:#01b4e4;color:#fff;}.pos-mid{background:#00a86b;color:#fff;}.pos-fwd{background:#e74c3c;color:#fff;}
   .player-name{font-size:11px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--white);}
-  .player-pts{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--navy);flex-shrink:0;font-weight:700;}.player-club{font-size:9px;opacity:.55;margin-left:1px;color:var(--muted);}.status-flag{font-size:11px;margin-left:3px;cursor:help;vertical-align:middle;}
+  .player-pts{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--navy);flex-shrink:0;font-weight:700;}
+  .player-club{font-size:9px;opacity:.55;margin-left:1px;color:var(--muted);}
+  .status-flag{font-size:11px;margin-left:3px;cursor:help;vertical-align:middle;}
   .bench-divider{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;text-align:center;padding:4px 0;margin:4px 0;border-top:1px dashed rgba(0,0,0,.15);}
   .meta-row{margin-top:18px;display:flex;flex-direction:column;gap:6px;align-items:center;}
   .refresh-bar{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;}
@@ -113,7 +112,7 @@
   .ladder-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);width:100%;}
   .ladder-table{width:100%;border-collapse:collapse;min-width:400px;}
   .ladder-table th{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.8);font-weight:700;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.1);text-align:right;background:var(--navy);}
-  .ladder-table th:first-child{text-align:left;border-radius:0;}
+  .ladder-table th:first-child{text-align:left;}
   .ladder-table td{padding:11px 12px;border-bottom:1px solid rgba(0,0,0,.07);font-size:12px;text-align:right;font-family:'DM Mono',monospace;color:var(--white);}
   .ladder-table td:first-child{text-align:left;font-family:'DM Sans',sans-serif;}
   .ladder-row:hover{background:rgba(55,0,60,.04);}
@@ -135,29 +134,23 @@
   .squad-pos-group{margin-bottom:8px;}
   .squad-pos-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);font-weight:700;margin-bottom:3px;padding-left:4px;}
   .squad-player-row{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-radius:5px;margin-bottom:2px;}
-  .squad-player-row.in-xi{background:rgba(0,255,135,.08);border-color:rgba(0,204,106,.3);}
+  .squad-player-row.in-xi{background:rgba(0,255,135,.08);}
   .squad-player-row.on-bench{opacity:.55;}
   .squad-player-name{font-size:12px;color:var(--white);font-weight:500;}
   .squad-player-right{display:flex;align-items:center;gap:10px;}
   .squad-season-pts{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;}
-  .squad-gw-pts{font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--gold-light);}
-  .squad-player-row.on-bench .squad-gw-pts{color:var(--muted);}
-
-  .gw-nav{display:flex;align-items:center;gap:0;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,.3);border-radius:20px;overflow:hidden;flex-shrink:0;}
+  .gw-nav{display:flex;align-items:center;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,.3);border-radius:20px;overflow:hidden;flex-shrink:0;}
   .gw-nav-btn{background:none;border:none;color:rgba(255,255,255,.7);font-size:16px;padding:4px 10px;cursor:pointer;transition:color .2s,background .2s;line-height:1;}
   .gw-nav-btn:hover{color:#00ff87;background:rgba(255,255,255,.1);}
   .gw-nav-btn:disabled{opacity:.25;cursor:default;}
   .gw-nav-label{font-family:'Bebas Neue',sans-serif;font-size:18px;color:#00ff87;padding:0 4px;min-width:52px;text-align:center;line-height:1;}
   .gw-nav-sub{font-size:8px;color:rgba(255,255,255,.5);text-align:center;letter-spacing:1px;text-transform:uppercase;line-height:1;padding-bottom:3px;}
-
-  /* ── TEAM ADMIN ── */
   .admin-team-card{background:var(--card);border:2px solid var(--navy);border-radius:12px;margin-bottom:16px;overflow:hidden;box-shadow:var(--shadow);}
-  .admin-team-header{padding:12px 16px;border-bottom:2px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--navy);}
+  .admin-team-header{padding:12px 16px;border-bottom:2px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--navy);cursor:pointer;}
   .admin-team-name{font-size:14px;font-weight:700;color:#fff;}
   .admin-team-manager{font-size:11px;color:rgba(255,255,255,.6);margin-top:2px;}
   .admin-pos-group{padding:8px 12px;display:none;}
   .admin-pos-group.open{display:block;}
-  .admin-team-header{cursor:pointer;}
   .admin-collapse-icon{margin-left:auto;color:rgba(255,255,255,.6);font-size:14px;transition:transform .25s;display:inline-block;}
   .admin-collapse-icon.open{transform:rotate(180deg);}
   .admin-pos-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--navy);font-weight:800;margin:10px 0 4px 4px;}
@@ -169,8 +162,6 @@
   .admin-player-meta{font-size:10px;color:var(--muted);}
   .admin-edit-icon{font-size:12px;color:var(--gold-dim);opacity:.6;}
   .admin-player-row:hover .admin-edit-icon{opacity:1;color:var(--gold);}
-
-  /* Search dropdown */
   .player-search-wrap{padding:10px 12px;background:#f9fafb;border-top:2px solid var(--navy);border-radius:0 0 8px 8px;}
   .player-search-input{width:100%;background:#fff;border:2px solid var(--navy);border-radius:8px;padding:8px 12px;color:var(--white);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
   .player-search-input::placeholder{color:var(--muted);}
@@ -266,11 +257,9 @@ const DEFAULT_TEAMS=[
   {id:8,name:"Bowenie Babies",short:"Bowenie Babies",manager:"Gid & Benny",gk:["Chelsea","Sunderland"],def:[261,373,8,531,295,151,408],mid:[384,449,47,796,517,457,660],fwd:[714,30,135,624]},
 ];
 
-let TEAMS = DEFAULT_TEAMS.map(t=>({...t,def:[...t.def],mid:[...t.mid],fwd:[...t.fwd],gk:[...t.gk]}));
+let TEAMS=DEFAULT_TEAMS.map(t=>({...t,def:[...t.def],mid:[...t.mid],fwd:[...t.fwd],gk:[...t.gk]}));
 
-// NOTE: FIXTURES only covers the regular season (GW31-35).
-// Finals fixtures (GW36-38) are computed dynamically by getFinalsFixtures()
-// based on actual locked scores — never hardcode them here.
+// Regular season fixtures only. Finals (GW36-38) are derived automatically.
 const FIXTURES={
   31:[{home:5,away:8},{home:3,away:4},{home:1,away:6},{home:2,away:7}],
   32:[{home:4,away:5},{home:6,away:8},{home:7,away:3},{home:2,away:1}],
@@ -279,7 +268,6 @@ const FIXTURES={
   35:[{home:5,away:2},{home:7,away:1},{home:6,away:3},{home:4,away:8}],
 };
 
-// STANDINGS_GW30: back-calculated from verified GW31 final table screenshot
 const STANDINGS_GW30={
   1:{p:30,w:18,d:1,l:11,f:1758,a:1605,pts:55},
   2:{p:30,w:11,d:2,l:17,f:1443,a:1575,pts:35},
@@ -292,79 +280,92 @@ const STANDINGS_GW30={
 };
 const HISTORICAL={31:{1:26,2:49,3:40,4:44,5:57,6:46,7:51,8:54}};
 
-// ── FINALS FIXTURES (computed dynamically from locked results) ─────────────────
-// GW36: top 4 from final regular season ladder seed the bracket
-// GW37: QF Loser vs EF Winner (from GW36 locked scores)
-// GW38: QF Winner vs PF Winner (from GW36+37 locked scores)
+// ── FINALS FIXTURE LOGIC ──────────────────────────────────────────────────────
+// Fully automatic — no manual input required at any point in the season.
+//
+// GW36 seedings: derived from end-of-regular-season standings. Always computable.
+// GW37 fixture:  QF Loser vs EF Winner, derived from LOCKED GW36 scores.
+//                Returns null if GW36 isn't locked yet (prevents live-score contamination).
+// GW38 fixture:  QF Winner vs PF Winner, derived from LOCKED GW36 + GW37 scores.
+//                Returns null until both prerequisite GWs are locked.
+//
+// When null: matchups page shows "bracket pending" and the ladder shows "Awaiting GW{n}".
+// Once each GW locks, the next round populates automatically.
 
-// Compute standings through maxGW (regular season only, GW31-35)
 function computeStandings(maxGW){
+  // Rebuild the league table through maxGW using only confirmed/locked GWs.
   const s={};
   TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW30[t.id],id:t.id,form:[]};});
   for(let gw=31;gw<=maxGW;gw++){
     const fix=FIXTURES[gw];if(!fix)continue;
-    const dc=gwEvents[gw]?.data_checked??false;
     const isHist=!!HISTORICAL[gw];
     const isSnap=lockedGWs.has(gw)&&!!gwSnapshots[gw];
+    const dc=gwEvents[gw]?.data_checked??false;
     if(!isHist&&!isSnap&&!dc)continue;
     fix.forEach(m=>{applyResult(s,m.home,m.away,getTeamGWScore(m.home,gw),getTeamGWScore(m.away,gw));});
   }
   return Object.values(s).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
 }
 
-// Compute dynamic finals fixtures — call only after data is loaded
 function getFinalsFixtures(gw){
   if(gw===36){
-    // Seed from final regular season standings (GW35)
+    // Seedings from end of regular season. Always computable — no lock dependency.
     const top4=computeStandings(35).slice(0,4).map(t=>t.id);
     return[
-      {home:top4[0],away:top4[1]},  // Qualifying Final: 1st vs 2nd
+      {home:top4[0],away:top4[1]},  // Qualifying Final:  1st vs 2nd
       {home:top4[2],away:top4[3]},  // Elimination Final: 3rd vs 4th
     ];
   }
+
   if(gw===37){
-    // Preliminary Final: QF Loser vs EF Winner
-    // Requires GW36 to be locked so getTeamGWScore returns snapshot scores
+    // Prelim Final = QF Loser vs EF Winner.
+    // MUST derive from locked GW36 scores — returning null here if not locked
+    // prevents live GW37 scores being used as a false "GW36 result".
+    if(!lockedGWs.has(36))return null;
     const[qf,ef]=getFinalsFixtures(36);
     const qfHS=getTeamGWScore(qf.home,36),qfAS=getTeamGWScore(qf.away,36);
     const efHS=getTeamGWScore(ef.home,36),efAS=getTeamGWScore(ef.away,36);
-    // Higher seed (home) wins on a tie
-    const qfLoser=qfHS>=qfAS?qf.away:qf.home;
+    const qfLoser =qfHS>=qfAS?qf.away:qf.home;
     const efWinner=efHS>=efAS?ef.home:ef.away;
     return[{home:qfLoser,away:efWinner}];
   }
+
   if(gw===38){
-    // Grand Final: QF Winner vs PF Winner
+    // Grand Final = QF Winner vs Prelim Final Winner.
+    // Both GW36 and GW37 must be locked.
+    if(!lockedGWs.has(36)||!lockedGWs.has(37))return null;
     const[qf]=getFinalsFixtures(36);
     const qfHS=getTeamGWScore(qf.home,36),qfAS=getTeamGWScore(qf.away,36);
     const qfWinner=qfHS>=qfAS?qf.home:qf.away;
-    const[pf]=getFinalsFixtures(37);
+    const gw37fix=getFinalsFixtures(37);
+    if(!gw37fix)return null;
+    const[pf]=gw37fix;
     const pfHS=getTeamGWScore(pf.home,37),pfAS=getTeamGWScore(pf.away,37);
     const pfWinner=pfHS>=pfAS?pf.home:pf.away;
     return[{home:qfWinner,away:pfWinner}];
   }
+
   return null;
 }
 
-// Unified fixture getter: regular season from FIXTURES, finals computed dynamically
+// Unified fixture getter. Regular season uses FIXTURES[]; finals computed dynamically.
+// May return null for finals GWs whose bracket isn't yet determinable.
 function getFixtures(gw){
   if(FIXTURES[gw])return FIXTURES[gw];
   if(gw>=36&&gw<=38)return getFinalsFixtures(gw);
   return null;
 }
 
-// State
-let playerMap={}, allPlayers=[], liveScores={}, gkScores={};
-let teamsWithGame=new Set(), teamsFinished=new Set(), clubNameToId={};
-let defaultGW=31, selectedGW=31, minGW=1, maxGW=38, gwEvents={};
-let dataChecked=false, currentPage='matchups', gwCache={};
-let lockedGWs=new Set(), gwSnapshots={}, scoreOverrides={};
-let activeSearch=null;
-let openCardId=null;
-let openAdminTeams=new Set();
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let playerMap={},allPlayers=[],liveScores={},gkScores={};
+let teamsWithGame=new Set(),teamsFinished=new Set(),clubNameToId={};
+let defaultGW=31,selectedGW=31,minGW=1,maxGW=38,gwEvents={};
+let dataChecked=false,currentPage='matchups',gwCache={};
+let lockedGWs=new Set(),gwSnapshots={},scoreOverrides={};
+let activeSearch=null,openCardId=null,openAdminTeams=new Set();
 
 // ── SQUAD OVERRIDES ───────────────────────────────────────────────────────────
-function applySquadOverrides(savedSquads, savedGKs){
+function applySquadOverrides(savedSquads,savedGKs){
   TEAMS=DEFAULT_TEAMS.map(t=>({...t,def:[...t.def],mid:[...t.mid],fwd:[...t.fwd],gk:[...t.gk]}));
   Object.entries(savedSquads||{}).forEach(([tid,positions])=>{
     const team=TEAMS.find(t=>t.id===parseInt(tid));if(!team)return;
@@ -396,7 +397,10 @@ function shouldBeLocked(gw){
 async function checkAndSnapshotGW(gw){
   if(lockedGWs.has(gw))return;
   if(!shouldBeLocked(gw))return;
-  // Use getFixtures so finals GWs (36-38) can also be snapshotted
+  // getFixtures() instead of FIXTURES[] — this is what allows GW36 to be snapshotted.
+  // getFinalsFixtures(36) is always computable (just needs standings).
+  // getFinalsFixtures(37)/(38) return null until prerequisites are locked,
+  // so those GWs won't attempt to snapshot prematurely.
   if(!getFixtures(gw))return;
   const gwData=gwCache[gw];if(!gwData)return;
   const savedLS=liveScores,savedGK=gkScores;
@@ -424,16 +428,12 @@ function computeDefaultGW(events){
   const evCurrent=events.find(e=>e.is_current);
   const evPrev=events.find(e=>e.is_previous);
   const evNext=events.find(e=>e.is_next);
-  if(evCurrent) return evCurrent.id;
-  if(evPrev && evPrev.data_checked){
-    if(evNext){
-      const nextDeadline=new Date(evNext.deadline_time);
-      const daysUntilNext=(nextDeadline-now)/(1000*60*60*24);
-      if(daysUntilNext<=2) return evNext.id;
-    }
+  if(evCurrent)return evCurrent.id;
+  if(evPrev&&evPrev.data_checked){
+    if(evNext){const d=(new Date(evNext.deadline_time)-now)/(1000*60*60*24);if(d<=2)return evNext.id;}
     return evPrev.id;
   }
-  return evPrev?.id ?? evNext?.id ?? 31;
+  return evPrev?.id??evNext?.id??31;
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
@@ -452,8 +452,7 @@ function showPage(name,el){
 async function changeGW(delta){
   const target=selectedGW+delta;
   if(target<minGW||target>maxGW)return;
-  selectedGW=target;
-  openCardId=null;
+  selectedGW=target;openCardId=null;
   await loadGWData(selectedGW);
   await checkAndSnapshotGW(selectedGW);
   updateGWNav();renderMatchups();
@@ -522,57 +521,57 @@ function bestXI(team){
   const sc=id=>liveScores[id]??0;
   const hasGame=id=>{const p=playerMap[id];return p?teamsWithGame.has(p.teamId):false;};
   const played=id=>{const p=playerMap[id];return sc(id)>0||(p&&teamsFinished.has(p.teamId));};
-  const active=id=>{const p=playerMap[id];if(!p)return false;if(sc(id)>0)return true;if(teamsFinished.has(p.teamId))return true;return false;};
-  const mk=(ids,pos)=>ids.map(id=>({id,pts:sc(id),pos,name:playerMap[id]?.name??('#'+id),club:playerMap[id]?.teamShort??'',hasGame:hasGame(id),played:played(id),active:active(id),seasonPts:playerMap[id]?.seasonPts??0}));
+  const mk=(ids,pos)=>ids.map(id=>({id,pts:sc(id),pos,name:playerMap[id]?.name??('#'+id),club:playerMap[id]?.teamShort??'',hasGame:hasGame(id),played:played(id),seasonPts:playerMap[id]?.seasonPts??0}));
   const sort=arr=>[...arr].sort((a,b)=>b.pts-a.pts);
-
   const allDef=mk(team.def,'DEF'),allMid=mk(team.mid,'MID'),allFwd=mk(team.fwd,'FWD');
   const allOutfield=[...allDef,...allMid,...allFwd];
-
   const counted=p=>played(p.id);
-
-  const cntDef=sort(allDef.filter(p=>counted(p))),pendDef=allDef.filter(p=>!counted(p));
-  const cntMid=sort(allMid.filter(p=>counted(p))),pendMid=allMid.filter(p=>!counted(p));
-  const cntFwd=sort(allFwd.filter(p=>counted(p))),pendFwd=allFwd.filter(p=>!counted(p));
-
+  const cntDef=sort(allDef.filter(p=>counted(p)));
+  const cntMid=sort(allMid.filter(p=>counted(p)));
+  const cntFwd=sort(allFwd.filter(p=>counted(p)));
   const gkClubFid=clubNameToId[gk.clubName];
   const gkClubShort=gkClubFid?Object.entries(clubNameToId).find(([k,v])=>v===gkClubFid&&k.length<=3)?.[0]??gk.clubName:gk.clubName;
-  const gkEntry={id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:gkClubShort,hasGame:false,played:true,active:true,seasonPts:0};
-
+  const gkEntry={id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:gkClubShort,hasGame:false,played:true,seasonPts:0};
   const mandDef=cntDef.slice(0,3),mandMid=cntMid.slice(0,3),mandFwd=cntFwd.slice(0,1);
   const mandatory=[...mandDef,...mandMid,...mandFwd];
   const usedIds=new Set(mandatory.map(p=>p.id));
-
-  const flexPool=[...cntDef.slice(3),...cntMid.slice(3),...cntFwd.slice(1)]
-    .filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
-
+  const flexPool=[...cntDef.slice(3),...cntMid.slice(3),...cntFwd.slice(1)].filter(p=>!usedIds.has(p.id)).sort((a,b)=>b.pts-a.pts).slice(0,3);
   const posOrder={GK:0,DEF:1,MID:2,FWD:3};
   const xiUnsorted=[gkEntry,...mandatory,...flexPool];
   const xiIds=new Set(xiUnsorted.filter(p=>p.id!=='gk').map(p=>p.id));
   const xi=[...xiUnsorted].sort((a,b)=>posOrder[a.pos]!==posOrder[b.pos]?posOrder[a.pos]-posOrder[b.pos]:b.pts-a.pts);
-
-  const bench=allOutfield.filter(p=>!xiIds.has(p.id))
-    .sort((a,b)=>{
-      const aPending=!counted(a),bPending=!counted(b);
-      if(aPending&&!bPending)return-1;
-      if(!aPending&&bPending)return 1;
-      return b.pts-a.pts;
-    });
-
+  const bench=allOutfield.filter(p=>!xiIds.has(p.id)).sort((a,b)=>{const aP=!counted(a),bP=!counted(b);if(aP&&!bP)return-1;if(!aP&&bP)return 1;return b.pts-a.pts;});
   const remainingAll=allOutfield.filter(p=>p.hasGame&&!played(p.id)).length;
   return{total:xi.reduce((s,p)=>s+p.pts,0),xi,bench,gk,remainingXI:remainingAll};
 }
 
 // ── RENDER MATCHUPS ───────────────────────────────────────────────────────────
 function renderMatchups(){
-  // Use getFixtures() — handles regular season (FIXTURES) and finals (dynamic)
+  // getFixtures() handles both regular season and finals GWs.
+  // Returns null for finals GWs whose bracket isn't determinable yet.
   const fixtures=getFixtures(selectedGW);
   const posC={GK:'pos-gk',DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
-  const isFinals=selectedGW>=36,dc=gwEvents[selectedGW]?.data_checked??false;
+  const isFinals=selectedGW>=36;
+  const dc=gwEvents[selectedGW]?.data_checked??false;
   const isFuture=!gwEvents[selectedGW]?.finished&&!gwEvents[selectedGW]?.is_current;
   const isLocked=lockedGWs.has(selectedGW)||!!HISTORICAL[selectedGW];
 
-  if(!fixtures){document.getElementById('matchupsBody').innerHTML='<div class="error-state">No fixtures configured for GW'+selectedGW+'.</div>';return;}
+  if(!fixtures){
+    if(isFinals){
+      const prevGW=selectedGW-1;
+      document.getElementById('matchupsBody').innerHTML=`
+        <div style="text-align:center;padding:48px 20px;">
+          <div style="font-size:40px;margin-bottom:14px">🏆</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;color:var(--navy);margin-bottom:10px">GW${selectedGW} Bracket Pending</div>
+          <div style="font-size:13px;color:var(--muted);line-height:1.7">
+            Fixtures are set automatically once GW${prevGW} bonus points confirm and scores lock in.
+          </div>
+        </div>`;
+    }else{
+      document.getElementById('matchupsBody').innerHTML='<div class="error-state">No fixtures configured for GW'+selectedGW+'.</div>';
+    }
+    return;
+  }
 
   const html=fixtures.map((m,i)=>{
     const home=TEAMS.find(t=>t.id===m.home),away=TEAMS.find(t=>t.id===m.away);
@@ -591,7 +590,6 @@ function renderMatchups(){
     const isOpen=openCardId===cid;
     const hRem=!isFuture&&!isLocked?(hXI?.remainingXI>0?`<span class="remaining">${hXI.remainingXI} to play</span>`:'<span>XI complete</span>'):'';
     const aRem=!isFuture&&!isLocked?(aXI?.remainingXI>0?`<span class="remaining">${aXI.remainingXI} to play</span>`:'<span>XI complete</span>'):'';
-
     const mkRow=(p,bench=false)=>{
       const notYet=!p.played&&p.hasGame&&p.id!=='gk';
       const flag=p.id!=='gk'?statusFlag(p.id):'';
@@ -603,7 +601,6 @@ function renderMatchups(){
     const mkDetail=(t,r)=>r
       ?`<div class="detail-team-header">${t.short} · ${r.total}pts</div>${r.xi.map(p=>mkRow(p)).join('')}<div class="bench-divider">Bench</div>${mkGKB(r.gk.bench)}${r.bench.map(p=>mkRow(p,true)).join('')}`
       :`<div class="detail-team-header">${t.short}</div><div style="padding:12px;font-size:12px;color:var(--muted);text-align:center">Locked score: ${hScore}</div>`;
-
     return`<div class="matchup-card" id="${cid}">
       <div class="card-header" onclick="toggleCard('${cid}')">
         <span class="match-label">${lbl}</span>${chip}
@@ -635,13 +632,20 @@ function finalsLabel(gw,i){
 }
 
 // ── LADDER ────────────────────────────────────────────────────────────────────
-function applyResult(s,hId,aId,hPts,aPts){const h=s[hId],a=s[aId];if(!h||!a)return;h.p++;a.p++;h.f+=hPts;h.a+=aPts;a.f+=aPts;a.a+=hPts;if(hPts>aPts){h.w++;h.pts+=3;h.form.push('W');a.l++;a.form.push('L');}else if(aPts>hPts){a.w++;a.pts+=3;a.form.push('W');h.l++;h.form.push('L');}else{h.d++;h.pts+=1;h.form.push('D');a.d++;a.pts+=1;a.form.push('D');}}
+function applyResult(s,hId,aId,hPts,aPts){
+  const h=s[hId],a=s[aId];if(!h||!a)return;
+  h.p++;a.p++;h.f+=hPts;h.a+=aPts;a.f+=aPts;a.a+=hPts;
+  if(hPts>aPts){h.w++;h.pts+=3;h.form.push('W');a.l++;a.form.push('L');}
+  else if(aPts>hPts){a.w++;a.pts+=3;a.form.push('W');h.l++;h.form.push('L');}
+  else{h.d++;h.pts+=1;h.form.push('D');a.d++;a.pts+=1;a.form.push('D');}
+}
 
 function renderLadder(){
   const s={};
   TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW30[t.id],name:t.name,short:t.short,manager:t.manager,form:[]};});
   let lastCompletedGW=30;
-  // Ladder only counts regular season GWs (31-35). Finals are separate.
+  // Ladder table = regular season only (GW31-35).
+  // Finals results appear in the bracket section below.
   for(let gw=31;gw<=35;gw++){
     const fixtures=FIXTURES[gw];if(!fixtures)continue;
     const dc=gwEvents[gw]?.data_checked??false;
@@ -651,8 +655,9 @@ function renderLadder(){
     fixtures.forEach(m=>{applyResult(s,m.home,m.away,getTeamGWScore(m.home,gw),getTeamGWScore(m.away,gw));});
     lastCompletedGW=gw;
   }
-  const subtitle=lastCompletedGW>30?`Completed through GW${lastCompletedGW} · Bonus confirmed only`:'GW31 onwards pending';
+  const subtitle=lastCompletedGW>30?`Regular season through GW${lastCompletedGW} · Bonus confirmed only`:'GW31 onwards pending';
   document.getElementById('ladderSubtitle').textContent=subtitle;
+
   const sorted=Object.values(s).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
   const rows=sorted.map((t,i)=>{
     const pos=i+1,inF=pos<=4;
@@ -668,30 +673,28 @@ function renderLadder(){
     </tr>`;
   }).join('');
 
-  // ── Dynamic finals bracket ─────────────────────────────────────────────────
-  // Short name helper
-  const tn=id=>TEAMS.find(t=>t.id===id)?.short??'TBD';
+  // ── FINALS BRACKET ────────────────────────────────────────────────────────
+  // All derived from locked scores — no manual data needed.
+  const tn=id=>{const t=TEAMS.find(t=>t.id===id);return t?t.short:'TBD';};
 
-  // GW36 teams: always computable from the regular season ladder
-  const gw36fix=getFinalsFixtures(36);
-  const qf1h=tn(gw36fix[0].home),qf1a=tn(gw36fix[0].away);
-  const qf2h=tn(gw36fix[1].home),qf2a=tn(gw36fix[1].away);
-
-  // GW37 teams: only determinable after GW36 is locked (scores in Supabase)
+  // GW36: always computable from regular season seedings
+  const[qf,ef]=getFinalsFixtures(36);
   const gw36locked=lockedGWs.has(36);
-  let pf1h='QF Loser',pf1a='EF Winner';
-  if(gw36locked){
-    const gw37fix=getFinalsFixtures(37);
-    pf1h=tn(gw37fix[0].home);pf1a=tn(gw37fix[0].away);
-  }
+  const mkScore=(h,a)=>gw36locked
+    ?`<span style="font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--navy);letter-spacing:1px">${getTeamGWScore(h,36)}–${getTeamGWScore(a,36)}</span>`
+    :`<span style="font-size:10px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">vs</span>`;
 
-  // GW38 teams: only determinable after GW37 is locked
-  const gw37locked=lockedGWs.has(37);
-  let gf1h='QF Winner',gf1a='Prelim Winner';
-  if(gw37locked){
-    const gw38fix=getFinalsFixtures(38);
-    gf1h=tn(gw38fix[0].home);gf1a=tn(gw38fix[0].away);
-  }
+  // GW37: populated once GW36 locks
+  const gw37fix=getFinalsFixtures(37);
+  const pf1H=gw37fix?tn(gw37fix[0].home):'QF Loser';
+  const pf1A=gw37fix?tn(gw37fix[0].away):'EF Winner';
+  const pf1Style=gw37fix?'font-weight:700;color:var(--navy)':'font-weight:400;color:var(--muted);font-style:italic';
+
+  // GW38: populated once GW37 locks
+  const gw38fix=getFinalsFixtures(38);
+  const gfH=gw38fix?tn(gw38fix[0].home):'QF Winner';
+  const gfA=gw38fix?tn(gw38fix[0].away):'Prelim Winner';
+  const gfStyle=gw38fix?'font-weight:700;color:var(--navy)':'font-weight:400;color:var(--muted);font-style:italic';
 
   const finalsHtml=`
     <div style="margin-top:20px">
@@ -699,37 +702,37 @@ function renderLadder(){
       <div class="ladder-card" style="margin-bottom:10px">
         <div style="padding:10px 14px;background:var(--navy);color:#00ff87;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">GW36 · Qualifying Final</div>
         <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
-          <span style="font-size:13px;font-weight:700;color:var(--navy)">${qf1h}</span>
-          <span style="font-size:10px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">Winner → Grand Final</span>
-          <span style="font-size:13px;font-weight:700;color:var(--navy)">${qf1a}</span>
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">${tn(qf.home)}</span>
+          ${mkScore(qf.home,qf.away)}
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">${tn(qf.away)}</span>
         </div>
         <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px;font-weight:700;color:var(--navy)">${qf2h}</span>
-          <span style="font-size:10px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">Loser eliminated</span>
-          <span style="font-size:13px;font-weight:700;color:var(--navy)">${qf2a}</span>
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">${tn(ef.home)}</span>
+          ${mkScore(ef.home,ef.away)}
+          <span style="font-size:13px;font-weight:700;color:var(--navy)">${tn(ef.away)}</span>
         </div>
       </div>
       <div class="ladder-card" style="margin-bottom:10px">
-        <div style="padding:10px 14px;background:var(--navy);color:#00ff87;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">GW37 · Preliminary Final${!gw36locked?' · <span style="opacity:.6">teams TBD after GW36</span>':''}</div>
+        <div style="padding:10px 14px;background:var(--navy);color:#00ff87;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">GW37 · Preliminary Final</div>
         <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px;font-weight:700;color:var(--navy)">${pf1h}</span>
-          <span style="font-size:10px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">Winner → Grand Final</span>
-          <span style="font-size:13px;font-weight:700;color:var(--navy)">${pf1a}</span>
+          <span style="font-size:13px;${pf1Style}">${pf1H}</span>
+          <span style="font-size:10px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">${gw37fix?'Winner → Grand Final':'Awaiting GW36'}</span>
+          <span style="font-size:13px;${pf1Style}">${pf1A}</span>
         </div>
       </div>
       <div class="ladder-card">
-        <div style="padding:10px 14px;background:linear-gradient(135deg,#37003c,#5c0064);color:#00ff87;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">GW38 · 🏆 Grand Final${!gw37locked?' · <span style="opacity:.6">teams TBD after GW37</span>':''}</div>
+        <div style="padding:10px 14px;background:linear-gradient(135deg,#37003c,#5c0064);color:#00ff87;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">GW38 · 🏆 Grand Final</div>
         <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px;font-weight:700;color:var(--navy)">${gf1h}</span>
-          <span style="font-size:11px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">🏆 Champion</span>
-          <span style="font-size:13px;font-weight:700;color:var(--navy)">${gf1a}</span>
+          <span style="font-size:13px;${gfStyle}">${gfH}</span>
+          <span style="font-size:11px;color:var(--muted);background:#f3f4f6;padding:3px 8px;border-radius:4px">${gw38fix?'🏆 Champion':'Awaiting GW37'}</span>
+          <span style="font-size:13px;${gfStyle}">${gfA}</span>
         </div>
       </div>
     </div>`;
 
   document.getElementById('ladderBody').innerHTML=`
     <div style="font-size:11px;color:var(--muted);margin-bottom:8px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px">
-      📊 Completed GWs only · Updates when bonus points confirmed
+      📊 Regular season only · Updates when bonus points confirmed
     </div>
     <div class="ladder-card" style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table class="ladder-table">
       <thead><tr><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>F</th><th>A</th><th>GD</th><th>PTS</th></tr></thead>
@@ -900,7 +903,6 @@ async function loadAll(){
     apiFetch('/api/health').then(h=>console.log('DB:',h.db_type,'rows:',h.squad_rows)).catch(()=>{});
     gwEvents={};boot.events?.forEach(e=>{gwEvents[e.id]=e;});
     minGW=boot.events?.[0]?.id??1;maxGW=boot.events?.[boot.events.length-1]?.id??38;
-
     defaultGW=computeDefaultGW(boot.events||[]);
     selectedGW=defaultGW;
 
@@ -916,8 +918,10 @@ async function loadAll(){
 
     await loadGWData(selectedGW);
 
-    // Snapshot any past GWs that should be locked but aren't yet.
-    // Use getFixtures() so finals GWs (36-38) can also be snapshotted.
+    // Snapshot any past GWs that have crossed their deadline and aren't locked yet.
+    // Using getFixtures() instead of FIXTURES[] means GW36 is now included here.
+    // The null guard inside getFinalsFixtures(37/38) prevents premature snapshotting
+    // of those rounds before their prerequisites are locked.
     let didSnapshot=false;
     for(let gw=Math.max(31,selectedGW-3);gw<selectedGW;gw++){
       if(!lockedGWs.has(gw)&&getFixtures(gw)&&shouldBeLocked(gw)){
@@ -926,8 +930,8 @@ async function loadAll(){
         didSnapshot=true;
       }
     }
-    // Restore selected GW globals after any snapshot side-effects
-    if(didSnapshot) await loadGWData(selectedGW);
+    // Restore selected GW data after any snapshot side-effects.
+    if(didSnapshot)await loadGWData(selectedGW);
 
     updateGWNav();renderMatchups();
     document.getElementById('metaRow').style.display='flex';
