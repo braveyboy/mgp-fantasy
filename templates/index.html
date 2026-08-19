@@ -104,6 +104,18 @@
   .player-name{font-size:11px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--white);}
   .player-pts{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--navy);flex-shrink:0;font-weight:700;}.player-club{font-size:9px;opacity:.55;margin-left:1px;color:var(--muted);}.status-flag{font-size:11px;margin-left:3px;cursor:help;vertical-align:middle;}
   .bench-divider{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;text-align:center;padding:4px 0;margin:4px 0;border-top:1px dashed rgba(0,0,0,.15);}
+  .bps-row{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 2px;border-bottom:1px solid rgba(0,0,0,.06);}
+  .bps-name{font-size:11px;color:var(--white);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bps-val{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0;}
+  .bonus-pill{font-size:10px;font-weight:700;color:#fff;background:#00cc6a;padding:2px 6px;border-radius:10px;flex-shrink:0;}
+  .bonus-pill.prov{background:#f59e0b;opacity:.85;}
+  .defcon-row{padding:6px 2px;border-bottom:1px solid rgba(0,0,0,.06);}
+  .defcon-name{font-size:11px;color:var(--white);display:block;margin-bottom:3px;}
+  .defcon-bar-wrap{display:flex;align-items:center;gap:8px;}
+  .defcon-bar{flex:1;height:6px;background:rgba(1,180,228,.15);border-radius:4px;overflow:hidden;}
+  .defcon-fill{height:100%;background:#01b4e4;border-radius:4px;transition:width .3s;}
+  .defcon-fill.hit{background:#00cc6a;}
+  .defcon-count{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);flex-shrink:0;min-width:44px;text-align:right;}
   .meta-row{margin-top:18px;display:flex;flex-direction:column;gap:6px;align-items:center;}
   .refresh-bar{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;}
   .refresh-icon{display:inline-block;}
@@ -216,6 +228,7 @@
 <nav>
   <div class="nav-inner">
     <div class="nav-item active" onclick="showPage('matchups',this)">Matchups</div>
+    <div class="nav-item" onclick="showPage('fixtures',this)">Fixtures</div>
     <div class="nav-item" onclick="showPage('ladder',this)">Ladder</div>
     <div class="nav-item" onclick="showPage('squads',this)">Squads</div>
     <div class="nav-item" onclick="showPage('admin',this)">Team Admin</div>
@@ -234,6 +247,13 @@
       <div class="api-note">Live from <span>FPL API</span> · <span>Best XI scoring</span></div>
     </div>
   </div>
+  <div class="page" id="page-fixtures">
+    <div class="status-bar">
+      <h1 class="section-title" id="fixturesTitle">GW1 Fixtures</h1>
+      <div style="font-size:10px;color:var(--muted)">Real EPL matches · live BPS &amp; DEFCON</div>
+    </div>
+    <div id="fixturesBody"><div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading real fixtures…</div></div></div>
+  </div>
   <div class="page" id="page-ladder">
     <div class="status-bar"><h1 class="section-title">Ladder</h1><div style="font-size:11px;color:var(--muted)" id="ladderSubtitle">Loading…</div></div>
     <div id="ladderBody"><div class="loading-state"><div class="spinner"></div><div class="loading-text">Calculating standings…</div></div></div>
@@ -250,6 +270,7 @@
 <div class="admin-save-toast" id="saveToast">✓ Squad updated</div>
 <div class="bottom-nav">
   <div class="bn-item active" onclick="showPage('matchups',this)"><div class="bn-icon">⚽</div><div class="bn-label">Matchups</div></div>
+  <div class="bn-item" onclick="showPage('fixtures',this)"><div class="bn-icon">📅</div><div class="bn-label">Fixtures</div></div>
   <div class="bn-item" onclick="showPage('ladder',this)"><div class="bn-icon">📊</div><div class="bn-label">Ladder</div></div>
   <div class="bn-item" onclick="showPage('squads',this)"><div class="bn-icon">👥</div><div class="bn-label">Squads</div></div>
   <div class="bn-item" onclick="showPage('admin',this)"><div class="bn-icon">✏️</div><div class="bn-label">Admin</div></div>
@@ -343,6 +364,8 @@ let lockedGWs=new Set(), gwSnapshots={}, scoreOverrides={};
 let activeSearch=null;
 let openCardId=null;
 let openAdminTeams=new Set(); // track which card is open so refresh preserves it
+let rawFixtures=[], playerStats={}, teamIdToShort={}, teamIdToName={};
+let openFixtureId=null;
 
 // ── SQUAD OVERRIDES ───────────────────────────────────────────────────────────
 function applySquadOverrides(savedSquads, savedGKs){
@@ -509,9 +532,10 @@ function showPage(name,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item,.bn-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  const idx=['matchups','ladder','squads','admin'].indexOf(name);
+  const idx=['matchups','fixtures','ladder','squads','admin'].indexOf(name);
   if(idx>=0){document.querySelectorAll('.nav-item')[idx]?.classList.add('active');document.querySelectorAll('.bn-item')[idx]?.classList.add('active');}
   currentPage=name;
+  if(name==='fixtures')renderFixtures();
   if(name==='ladder')renderLadder();
   if(name==='squads')renderSquads();
   if(name==='admin')renderAdmin();
@@ -525,6 +549,7 @@ async function changeGW(delta){
   await loadGWData(selectedGW);
   await checkAndSnapshotGW(selectedGW);
   updateGWNav();renderMatchups();
+  if(currentPage==='fixtures')renderFixtures();
   if(currentPage==='ladder')renderLadder();
   if(currentPage==='squads')renderSquads();
 }
@@ -550,15 +575,20 @@ async function loadGWData(gw){
     const[gwFix,live]=await Promise.all([apiFetch('/api/fixtures/'+gw),apiFetch('/api/live/'+gw)]);
     const twg=new Set(),tf=new Set();
     gwFix.forEach(f=>{twg.add(f.team_h);twg.add(f.team_a);if(f.finished||f.finished_provisional){tf.add(f.team_h);tf.add(f.team_a);}});
-    const ls={},gks={};
-    live.elements?.forEach(e=>{const pts=e.stats?.total_points??0;ls[e.id]=pts;const p=playerMap[e.id];if(p?.type===1){if(!gks[p.teamId])gks[p.teamId]=[];gks[p.teamId].push({id:e.id,pts,name:p.name});gks[p.teamId].sort((a,b)=>b.pts-a.pts);}});
-    gwCache[gw]={liveScores:ls,gkScores:gks,teamsWithGame:twg,teamsFinished:tf};
+    const ls={},gks={},pstats={};
+    live.elements?.forEach(e=>{
+      const pts=e.stats?.total_points??0;ls[e.id]=pts;
+      pstats[e.id]=e.stats??{};
+      const p=playerMap[e.id];if(p?.type===1){if(!gks[p.teamId])gks[p.teamId]=[];gks[p.teamId].push({id:e.id,pts,name:p.name});gks[p.teamId].sort((a,b)=>b.pts-a.pts);}
+    });
+    gwCache[gw]={liveScores:ls,gkScores:gks,teamsWithGame:twg,teamsFinished:tf,rawFixtures:gwFix,playerStats:pstats};
   }
   // Only write to globals if this is the currently selected GW
   // (prevents snapshot loop from overwriting live display data)
   if(gw===selectedGW){
     const c=gwCache[gw];
     liveScores=c.liveScores;gkScores=c.gkScores;teamsWithGame=c.teamsWithGame;teamsFinished=c.teamsFinished;
+    rawFixtures=c.rawFixtures;playerStats=c.playerStats;
   }
 }
 
@@ -720,6 +750,102 @@ function toggleCard(cid){
 }
 
 function finalsLabel(gw,i){if(gw===36)return i===0?'🏆 Qualifying Final (1v2)':'⚔️ Elimination Final (3v4)';if(gw===37)return'⚔️ Preliminary Final';if(gw===38)return'🏆 Grand Final';return'Match '+(i+1);}
+
+// ── FIXTURES TAB: real EPL fixtures + live BPS/DEFCON tracking ─────────────────
+// DEFCON thresholds (2025/26+ rules): DEF need 10 combined CBIT (clearances,
+// blocks, interceptions, tackles). MID/FWD need 12 CBIRT (same + recoveries).
+// GK not eligible. Capped at +2, no partial credit.
+function defconInfo(playerId){
+  const p=playerMap[playerId];if(!p||p.type===1)return null; // GK not eligible
+  const st=playerStats[playerId];if(!st)return null;
+  const cbi=(st.clearances_blocks_interceptions??0)+(st.tackles??0);
+  const threshold=p.type===2?10:12;
+  const actions=p.type===2?cbi:cbi+(st.recoveries??0);
+  return{actions,threshold,hit:actions>=threshold};
+}
+
+function playersForTeam(teamId){
+  return Object.entries(playerMap).filter(([id,p])=>p.teamId===teamId).map(([id])=>parseInt(id));
+}
+
+function renderFixtures(){
+  document.getElementById('fixturesTitle').textContent=`GW${selectedGW} Fixtures`;
+  if(!rawFixtures||!rawFixtures.length){
+    document.getElementById('fixturesBody').innerHTML='<div class="error-state">No fixture data for this gameweek yet.</div>';
+    return;
+  }
+  const html=rawFixtures.map((f,i)=>{
+    const fid='fx-'+f.id;
+    const isOpen=openFixtureId===fid;
+    const homeShort=teamIdToShort[f.team_h]??'?',awayShort=teamIdToShort[f.team_a]??'?';
+    const started=f.started||f.finished||f.finished_provisional;
+    const finished=f.finished||f.finished_provisional;
+    const kickoff=f.kickoff_time?new Date(f.kickoff_time).toLocaleString('en-GB',{weekday:'short',hour:'2-digit',minute:'2-digit'}):'TBC';
+    const statusChip=finished?'<div class="fin-chip">FT ✓</div>':started?'<div class="live-chip"><div class="dot"></div>Live</div>':`<div class="fin-chip" style="background:#6b7280">${kickoff}</div>`;
+    const scoreStr=started?`${f.team_h_score??0} – ${f.team_a_score??0}`:'v';
+
+    const homePlayers=playersForTeam(f.team_h),awayPlayers=playersForTeam(f.team_a);
+    const allPlayersInFixture=[...homePlayers,...awayPlayers];
+
+    // Live BPS leaderboard — top 6, provisional 3/2/1 bonus while live, real bonus once FT.
+    // Tied BPS values share the same bonus tier (matches real FPL tie-break behaviour).
+    const bpsRanked=allPlayersInFixture
+      .map(id=>({id,bps:playerStats[id]?.bps??0,bonus:playerStats[id]?.bonus??0,mins:playerStats[id]?.minutes??0}))
+      .filter(p=>p.mins>0)
+      .sort((a,b)=>b.bps-a.bps)
+      .slice(0,6);
+    const distinctBps=[...new Set(bpsRanked.map(p=>p.bps))].sort((a,b)=>b-a);
+    const provTier=bps=>{const rank=distinctBps.indexOf(bps);return rank===0?3:rank===1?2:rank===2?1:0;};
+    const bpsRows=bpsRanked.map(row=>{
+      const p=playerMap[row.id];
+      const tier=provTier(row.bps);
+      const provBadge=finished
+        ?(row.bonus>0?`<span class="bonus-pill">+${row.bonus}</span>`:'')
+        :(tier>0?`<span class="bonus-pill prov">+${tier}</span>`:'');
+      return`<div class="bps-row"><span class="bps-name">${p?.name??'#'+row.id} <span class="player-club">(${p?.teamShort??''})</span></span><span class="bps-val">${row.bps} bps</span>${provBadge}</div>`;
+    }).join('')||'<div style="padding:8px;font-size:11px;color:var(--muted)">No BPS data yet</div>';
+
+    // DEFCON tracker — outfield players who've played, sorted by progress toward threshold
+    const defconRanked=allPlayersInFixture
+      .map(id=>({id,dc:defconInfo(id)}))
+      .filter(x=>x.dc&&(playerStats[x.id]?.minutes??0)>0)
+      .sort((a,b)=>(b.dc.actions/b.dc.threshold)-(a.dc.actions/a.dc.threshold))
+      .slice(0,6);
+    const defconRows=defconRanked.map(({id,dc})=>{
+      const p=playerMap[id];
+      const pct=Math.min(100,Math.round(dc.actions/dc.threshold*100));
+      const hitClass=dc.hit?'hit':'';
+      return`<div class="defcon-row"><span class="defcon-name">${p?.name??'#'+id} <span class="player-club">(${p?.teamShort??''})</span></span>
+        <div class="defcon-bar-wrap"><div class="defcon-bar"><div class="defcon-fill ${hitClass}" style="width:${pct}%"></div></div><span class="defcon-count">${dc.actions}/${dc.threshold}${dc.hit?' ✓':''}</span></div></div>`;
+    }).join('')||'<div style="padding:8px;font-size:11px;color:var(--muted)">No defensive data yet</div>';
+
+    return`<div class="matchup-card" id="${fid}">
+      <div class="card-header" onclick="toggleFixture('${fid}')">
+        <span class="match-label">${homeShort} vs ${awayShort}</span>${statusChip}
+        <span class="card-toggle ${isOpen?'open':''}">▼</span>
+      </div>
+      <div class="card-scores" onclick="toggleFixture('${fid}')">
+        <div class="team-side left"><div class="team-name-big">${teamIdToName[f.team_h]??homeShort}</div></div>
+        <div class="score-block"><span class="score drawing" style="font-size:24px">${scoreStr}</span></div>
+        <div class="team-side right"><div class="team-name-big">${teamIdToName[f.team_a]??awayShort}</div></div>
+      </div>
+      <div class="card-detail ${isOpen?'open':''}">
+        <div class="detail-inner">
+          <div class="detail-team-header" style="border-bottom-color:#f59e0b;color:#d97706">⚡ Live BPS ${finished?'(final)':'(provisional bonus shown)'}</div>
+          ${bpsRows}
+          <div class="detail-team-header" style="margin-top:14px;border-bottom-color:#01b4e4;color:#0284c7">🛡️ DEFCON tracker</div>
+          ${defconRows}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('fixturesBody').innerHTML='<div class="matchups-grid">'+html+'</div>';
+}
+
+function toggleFixture(fid){
+  if(openFixtureId===fid){openFixtureId=null;}else{openFixtureId=fid;}
+  renderFixtures();
+}
 
 // ── LADDER ────────────────────────────────────────────────────────────────────
 function applyResult(s,hId,aId,hPts,aPts){const h=s[hId],a=s[aId];if(!h||!a)return;h.p++;a.p++;h.f+=hPts;h.a+=aPts;a.f+=aPts;a.a+=hPts;if(hPts>aPts){h.w++;h.pts+=3;h.form.push('W');a.l++;a.form.push('L');}else if(aPts>hPts){a.w++;a.pts+=3;a.form.push('W');h.l++;h.form.push('L');}else{h.d++;h.pts+=1;h.form.push('D');a.d++;a.pts+=1;a.form.push('D');}}
@@ -988,6 +1114,7 @@ async function selectPlayer(playerId){
     showToast('⚠ Save failed — change may revert');
   }
   renderAdmin();renderMatchups();
+  if(currentPage==='fixtures')renderFixtures();
   if(currentPage==='ladder')renderLadder();
   if(currentPage==='squads')renderSquads();
 }
@@ -1013,6 +1140,7 @@ async function selectGKClub(clubName){
     showToast('⚠ Save failed — change may revert');
   }
   renderAdmin();renderMatchups();
+  if(currentPage==='fixtures')renderFixtures();
   if(currentPage==='ladder')renderLadder();
   if(currentPage==='squads')renderSquads();
 }
@@ -1041,16 +1169,24 @@ async function loadAll(){
     defaultGW=computeDefaultGW(boot.events||[]);
     selectedGW=defaultGW;
 
+    // FPL's total_points field still shows LAST season's final tally right up
+    // until this season's GW1 is actually played, then it resets and starts
+    // accumulating fresh. Zero it out ourselves in the meantime so squads/admin
+    // don't show misleading carried-over numbers during the pre-kickoff window.
+    const seasonStarted=boot.events?.some(e=>e.is_current||e.finished||e.is_previous)??false;
+
     clubNameToId={};boot.teams?.forEach(t=>{clubNameToId[t.name]=t.id;clubNameToId[t.short_name]=t.id;});
     const teamShortMap={};boot.teams?.forEach(t=>{teamShortMap[t.id]=t.short_name;});
-    boot.elements?.forEach(p=>{playerMap[p.id]={name:p.web_name,type:p.element_type,teamId:p.team,teamShort:teamShortMap[p.team]??'',seasonPts:p.total_points??0,status:p.status??'a',news:p.news??'',chanceThis:p.chance_of_playing_this_round,chanceNext:p.chance_of_playing_next_round};});
+    teamIdToShort={};teamIdToName={};boot.teams?.forEach(t=>{teamIdToShort[t.id]=t.short_name;teamIdToName[t.id]=t.name;});
+    boot.elements?.forEach(p=>{playerMap[p.id]={name:p.web_name,type:p.element_type,teamId:p.team,teamShort:teamShortMap[p.team]??'',seasonPts:seasonStarted?(p.total_points??0):0,status:p.status??'a',news:p.news??'',chanceThis:p.chance_of_playing_this_round,chanceNext:p.chance_of_playing_next_round};});
     // Merge in placeholder players not yet registered in FPL this season
     const posTypeMap={GK:1,DEF:2,MID:3,FWD:4};
     Object.entries(PENDING_PLAYERS).forEach(([id,pp])=>{
       playerMap[id]={name:pp.name,type:posTypeMap[pp.pos]??3,teamId:0,teamShort:pp.club,seasonPts:0,status:'a',news:'Not yet registered in FPL this season',chanceThis:null,chanceNext:null};
     });
     // Sort allPlayers by team then name for admin search
-    allPlayers=boot.elements?.filter(p=>[2,3,4].includes(p.element_type)).map(p=>({id:p.id,name:p.web_name,type:p.element_type,teamShort:teamShortMap[p.team]??'',seasonPts:p.total_points??0,status:p.status})).sort((a,b)=>a.teamShort.localeCompare(b.teamShort)||a.name.localeCompare(b.name))??[];
+    allPlayers=boot.elements?.filter(p=>[2,3,4].includes(p.element_type)).map(p=>({id:p.id,name:p.web_name,type:p.element_type,teamShort:teamShortMap[p.team]??'',seasonPts:seasonStarted?(p.total_points??0):0,status:p.status})).sort((a,b)=>a.teamShort.localeCompare(b.teamShort)||a.name.localeCompare(b.name))??[];
+
 
     applySquadOverrides(savedData.squads,savedData.gk_clubs);
     lockedGWs=new Set(savedData.locked_gws||[]);
@@ -1075,7 +1211,8 @@ async function loadAll(){
     updateGWNav();renderMatchups();
     document.getElementById('metaRow').style.display='flex';
     document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    if(currentPage==='ladder')renderLadder();
+    if(currentPage==='fixtures')renderFixtures();
+  if(currentPage==='ladder')renderLadder();
     if(currentPage==='squads')renderSquads();
     if(currentPage==='admin')renderAdmin();
   }catch(err){
@@ -1098,7 +1235,8 @@ async function refreshCurrent(){
     updateGWNav();
     renderMatchups();
     document.getElementById('lastUpdated').textContent='Last updated: '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    if(currentPage==='ladder')renderLadder();
+    if(currentPage==='fixtures')renderFixtures();
+  if(currentPage==='ladder')renderLadder();
     if(currentPage==='squads')renderSquads();
     if(currentPage==='admin')renderAdmin();
   }catch(e){console.warn('Refresh failed:',e);}
