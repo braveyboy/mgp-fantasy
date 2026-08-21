@@ -633,16 +633,24 @@ function statusFlag(id){
 
 // ── GK LOGIC ──────────────────────────────────────────────────────────────────
 function getGKResult(team){
+  // Short club abbreviation (e.g. "ARS") for display, same lookup for every club.
+  const shortFor=(clubName,fid)=>{
+    if(fid===undefined)return clubName;
+    const entry=Object.entries(clubNameToId).find(([k,v])=>v===fid&&k.length<=3);
+    return entry?entry[0]:clubName;
+  };
   const results=team.gk.map(clubName=>{
     const fid=clubNameToId[clubName],clubGKs=(fid!==undefined?gkScores[fid]:null)||[];
-    let pts=0,name=clubName+' GK';
-    if(clubGKs.length>=2&&clubGKs[0].pts>0&&clubGKs[1].pts>0){pts=clubGKs.reduce((s,g)=>s+g.pts,0);name=clubGKs.map(g=>g.name).join('+');}
-    else if(clubGKs.length>0){pts=clubGKs[0].pts;name=clubGKs[0].name;}
-    return{clubName,fid,pts,name,clubGKs};
+    // Rule: you get the SINGLE highest-scoring keeper for this club — never combine.
+    // This covers both an in-match substitution (e.g. injury) and a double-gameweek
+    // where two different keepers started the two matches — either way, take the max.
+    // clubGKs is already sorted highest-first, so clubGKs[0] is always the answer.
+    const pts=clubGKs.length>0?clubGKs[0].pts:0;
+    return{clubName,fid,pts,clubGKs,short:shortFor(clubName,fid)};
   });
   results.sort((a,b)=>b.pts-a.pts);
   const starter=results[0],bench=results[1]||null;
-  return{pts:starter.pts,name:starter.name,clubName:starter.clubName,statusId:starter.clubGKs[0]?.id??null,bench:bench?{name:bench.name,pts:bench.pts,clubName:bench.clubName,statusId:bench.clubGKs[0]?.id??null}:null};
+  return{pts:starter.pts,name:starter.short,clubName:starter.clubName,statusId:starter.clubGKs[0]?.id??null,bench:bench?{name:bench.short,pts:bench.pts,clubName:bench.clubName,statusId:bench.clubGKs[0]?.id??null}:null};
 }
 
 // ── BEST XI ───────────────────────────────────────────────────────────────────
@@ -670,11 +678,9 @@ function bestXI(team){
   const cntMid=sort(allMid.filter(p=>counted(p))),pendMid=allMid.filter(p=>!counted(p));
   const cntFwd=sort(allFwd.filter(p=>counted(p))),pendFwd=allFwd.filter(p=>!counted(p));
 
-  // GK: use normal logic (best scoring club keeper counts)
-  // Store GK club short name for display
-  const gkClubFid=clubNameToId[gk.clubName];
-  const gkClubShort=gkClubFid?Object.entries(clubNameToId).find(([k,v])=>v===gkClubFid&&k.length<=3)?.[0]??gk.clubName:gk.clubName;
-  const gkEntry={id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:gkClubShort,hasGame:false,played:true,active:true,seasonPts:0};
+  // GK: use normal logic (best scoring club keeper counts).
+  // gk.name is already the short club abbreviation (e.g. "ARS") from getGKResult.
+  const gkEntry={id:'gk',pts:gk.pts,pos:'GK',name:gk.name,club:gk.name,hasGame:false,played:true,active:true,seasonPts:0};
 
   // Mandatory minimums from counted players only (1 GK already done)
   // Min 3 DEF, 3 MID, 1 FWD — but only from players who have played
@@ -748,7 +754,7 @@ function renderMatchups(){
       const upcoming=bench&&notYet?'<span style="font-size:10px;margin-left:3px;color:#f59e0b" title="Yet to play">⏱</span>':'';
       return`<div class="player-row ${bench?'bench':''} ${notYet&&bench?'bench-upcoming':notYet?'not-played':''}"><span class="pos-tag ${posC[p.pos]||'pos-def'}">${p.pos}</span><span class="player-name">${p.name}${club}${flag}${upcoming}</span><span class="player-pts">${p.pts}</span></div>`;
     };
-    const mkGKB=b=>{if(!b)return'';const flag=b.statusId?statusFlag(b.statusId):'';return`<div class="player-row bench"><span class="pos-tag pos-gk">GK</span><span class="player-name">${b.name} <span class="player-club">(${b.clubName})</span>${flag}</span><span class="player-pts">${b.pts}</span></div>`;};
+    const mkGKB=b=>{if(!b)return'';const flag=b.statusId?statusFlag(b.statusId):'';return`<div class="player-row bench"><span class="pos-tag pos-gk">GK</span><span class="player-name">${b.name}${flag}</span><span class="player-pts">${b.pts}</span></div>`;};
     // FIX: show all bench players
     const mkDetail=(t,r)=>r
       ?`<div class="detail-team-header">${t.short} · ${r.total}pts</div>${r.xi.map(p=>mkRow(p)).join('')}<div class="bench-divider">Bench</div>${mkGKB(r.gk.bench)}${r.bench.map(p=>mkRow(p,true)).join('')}`
