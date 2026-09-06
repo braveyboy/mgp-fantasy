@@ -70,6 +70,28 @@ def init_db():
                         gw INTEGER PRIMARY KEY,
                         locked_at TIMESTAMP DEFAULT NOW()
                     )""")
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS draft_sessions (
+                        id SERIAL PRIMARY KEY,
+                        status TEXT NOT NULL DEFAULT 'active',
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        ended_at TIMESTAMP
+                    )""")
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS draft_picks (
+                        id SERIAL PRIMARY KEY,
+                        session_id INTEGER NOT NULL,
+                        turn_number INTEGER NOT NULL,
+                        team_id INTEGER NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        kind TEXT,
+                        position TEXT,
+                        dropped_player_id INTEGER,
+                        dropped_club_name TEXT,
+                        added_player_id INTEGER,
+                        added_club_name TEXT,
+                        completed_at TIMESTAMP
+                    )""")
             conn.commit()
     else:
         with get_db() as conn:
@@ -91,6 +113,15 @@ def init_db():
                 PRIMARY KEY (gw, team_id))""")
             conn.execute("""CREATE TABLE IF NOT EXISTS locked_gws (
                 gw INTEGER PRIMARY KEY, locked_at TEXT DEFAULT (datetime('now')))""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS draft_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT DEFAULT (datetime('now')), ended_at TEXT)""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS draft_picks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL,
+                turn_number INTEGER NOT NULL, team_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending', kind TEXT, position TEXT,
+                dropped_player_id INTEGER, dropped_club_name TEXT,
+                added_player_id INTEGER, added_club_name TEXT, completed_at TEXT)""")
             conn.commit()
 
 init_db()
@@ -182,14 +213,7 @@ def build_squads_response():
 def get_squads():
     return jsonify(build_squads_response())
 
-@app.route("/api/squads/<int:team_id>", methods=["POST"])
-def update_squad(team_id):
-    data      = request.get_json()
-    position  = data.get("position")
-    player_id = data.get("player_id")
-    if not position or player_id is None:
-        return jsonify({"error": "Missing fields"}), 400
-
+def _apply_squad_slot(team_id, position, player_id):
     if DB_TYPE == "postgres":
         db_execute("""
             INSERT INTO squads (team_id, position, player_id, updated_at)
@@ -205,16 +229,7 @@ def update_squad(team_id):
                 player_id=excluded.player_id, updated_at=excluded.updated_at
         """, (team_id, position, player_id))
 
-    return jsonify(build_squads_response())
-
-@app.route("/api/squads/<int:team_id>/gk", methods=["POST"])
-def update_gk_club(team_id):
-    data      = request.get_json()
-    slot      = data.get("slot")
-    club_name = data.get("club_name")
-    if not slot or not club_name:
-        return jsonify({"error": "Missing fields"}), 400
-
+def _apply_gk_slot(team_id, slot, club_name):
     if DB_TYPE == "postgres":
         db_execute("""
             INSERT INTO gk_clubs (team_id, slot, club_name, updated_at)
@@ -230,6 +245,24 @@ def update_gk_club(team_id):
                 club_name=excluded.club_name, updated_at=excluded.updated_at
         """, (team_id, slot, club_name))
 
+@app.route("/api/squads/<int:team_id>", methods=["POST"])
+def update_squad(team_id):
+    data      = request.get_json()
+    position  = data.get("position")
+    player_id = data.get("player_id")
+    if not position or player_id is None:
+        return jsonify({"error": "Missing fields"}), 400
+    _apply_squad_slot(team_id, position, player_id)
+    return jsonify(build_squads_response())
+
+@app.route("/api/squads/<int:team_id>/gk", methods=["POST"])
+def update_gk_club(team_id):
+    data      = request.get_json()
+    slot      = data.get("slot")
+    club_name = data.get("club_name")
+    if not slot or not club_name:
+        return jsonify({"error": "Missing fields"}), 400
+    _apply_gk_slot(team_id, slot, club_name)
     return jsonify(build_squads_response())
 
 @app.route("/api/snapshot", methods=["POST"])
@@ -293,6 +326,159 @@ def save_override():
         """, (gw, team_id, score, note))
 
     return jsonify({"ok": True})
+
+
+# ── MONTHLY DRAFT ────────────────────────────────────────────────────────────
+# One shared commissioner PIN, set as a Render env var. Gates start/end/override
+# only — making a pick on your own turn needs no PIN, same trust model as
+# Team Admin. Only one draft can be active at a time.
+DRAFT_PIN = os.environ.get("DRAFT_PIN", "mgp2026")
+
+def _row(r):
+    return dict(r) if r is not None else None
+
+def _draft_session_payload(sess):
+    picks = db_fetchall(
+        "SELECT id, turn_number, team_id, status, kind, position, dropped_player_id, "
+        "dropped_club_name, added_player_id, added_club_name, completed_at FROM draft_picks "
+        "WHERE session_id=%s ORDER BY turn_number" if DB_TYPE == "postgres" else
+        "SELECT id, turn_number, team_id, status, kind, position, dropped_player_id, "
+        "dropped_club_name, added_player_id, added_club_name, completed_at FROM draft_picks "
+        "WHERE session_id=? ORDER BY turn_number",
+        (sess["id"],))
+    return {
+        "id": sess["id"],
+        "status": sess["status"],
+        "created_at": str(sess.get("created_at")) if sess.get("created_at") else None,
+        "ended_at": str(sess.get("ended_at")) if sess.get("ended_at") else None,
+        "order": [p["team_id"] for p in picks],
+        "picks": [dict(p) for p in picks],
+    }
+
+def build_draft_response():
+    active_row = _row(db_fetchone("SELECT id, status, created_at, ended_at FROM draft_sessions WHERE status='active' ORDER BY id DESC LIMIT 1"))
+    active = _draft_session_payload(active_row) if active_row else None
+    recent = None
+    if not active:
+        last_row = _row(db_fetchone("SELECT id, status, created_at, ended_at FROM draft_sessions WHERE status='completed' ORDER BY id DESC LIMIT 1"))
+        if last_row:
+            recent = _draft_session_payload(last_row)
+    return {"active": active, "recent": recent}
+
+@app.route("/api/draft", methods=["GET"])
+def get_draft():
+    return jsonify(build_draft_response())
+
+@app.route("/api/draft/start", methods=["POST"])
+def start_draft():
+    data = request.get_json()
+    if data.get("pin") != DRAFT_PIN:
+        return jsonify({"error": "Incorrect PIN"}), 403
+    team_ids = data.get("team_ids") or []
+    if len(team_ids) < 2:
+        return jsonify({"error": "Need at least 2 teams in the order"}), 400
+    if db_fetchone("SELECT id FROM draft_sessions WHERE status='active'"):
+        return jsonify({"error": "A draft is already active"}), 409
+
+    db_execute("INSERT INTO draft_sessions (status) VALUES ('active')")
+    sess = db_fetchone("SELECT id FROM draft_sessions ORDER BY id DESC LIMIT 1")
+    session_id = sess["id"]
+    for i, tid in enumerate(team_ids):
+        status = "active" if i == 0 else "pending"
+        if DB_TYPE == "postgres":
+            db_execute("INSERT INTO draft_picks (session_id, turn_number, team_id, status) VALUES (%s,%s,%s,%s)",
+                       (session_id, i + 1, tid, status))
+        else:
+            db_execute("INSERT INTO draft_picks (session_id, turn_number, team_id, status) VALUES (?,?,?,?)",
+                       (session_id, i + 1, tid, status))
+    return jsonify(build_draft_response())
+
+@app.route("/api/draft/pick", methods=["POST"])
+def draft_pick():
+    data = request.get_json()
+    pick_id = data.get("pick_id")
+    action  = data.get("action")
+
+    pick = _row(db_fetchone(
+        "SELECT * FROM draft_picks WHERE id=%s" if DB_TYPE == "postgres" else "SELECT * FROM draft_picks WHERE id=?",
+        (pick_id,)))
+    if not pick:
+        return jsonify({"error": "Pick not found"}), 404
+    if pick["status"] != "active":
+        return jsonify({"error": "This pick is not the current turn"}), 409
+
+    if action == "pass":
+        if DB_TYPE == "postgres":
+            db_execute("UPDATE draft_picks SET status='passed', completed_at=NOW() WHERE id=%s", (pick_id,))
+        else:
+            db_execute("UPDATE draft_picks SET status='passed', completed_at=datetime('now') WHERE id=?", (pick_id,))
+    elif action == "pick":
+        kind = data.get("kind"); position = data.get("position")
+        if not kind or not position:
+            return jsonify({"error": "Missing pick details"}), 400
+        args = (kind, position, data.get("dropped_player_id"), data.get("dropped_club_name"),
+                data.get("added_player_id"), data.get("added_club_name"), pick_id)
+        if DB_TYPE == "postgres":
+            db_execute("""UPDATE draft_picks SET status='done', kind=%s, position=%s, dropped_player_id=%s,
+                dropped_club_name=%s, added_player_id=%s, added_club_name=%s, completed_at=NOW() WHERE id=%s""", args)
+        else:
+            db_execute("""UPDATE draft_picks SET status='done', kind=?, position=?, dropped_player_id=?,
+                dropped_club_name=?, added_player_id=?, added_club_name=?, completed_at=datetime('now') WHERE id=?""", args)
+    else:
+        return jsonify({"error": "Invalid action"}), 400
+
+    next_pick = db_fetchone(
+        "SELECT id FROM draft_picks WHERE session_id=%s AND turn_number=%s" if DB_TYPE == "postgres" else
+        "SELECT id FROM draft_picks WHERE session_id=? AND turn_number=?",
+        (pick["session_id"], pick["turn_number"] + 1))
+    if next_pick:
+        db_execute("UPDATE draft_picks SET status='active' WHERE id=%s" if DB_TYPE == "postgres" else
+                   "UPDATE draft_picks SET status='active' WHERE id=?", (next_pick["id"],))
+
+    return jsonify(build_draft_response())
+
+@app.route("/api/draft/end", methods=["POST"])
+def end_draft():
+    data = request.get_json()
+    if data.get("pin") != DRAFT_PIN:
+        return jsonify({"error": "Incorrect PIN"}), 403
+    if DB_TYPE == "postgres":
+        db_execute("UPDATE draft_sessions SET status='completed', ended_at=NOW() WHERE status='active'")
+    else:
+        db_execute("UPDATE draft_sessions SET status='completed', ended_at=datetime('now') WHERE status='active'")
+    return jsonify(build_draft_response())
+
+@app.route("/api/draft/override", methods=["POST"])
+def draft_override():
+    data = request.get_json()
+    if data.get("pin") != DRAFT_PIN:
+        return jsonify({"error": "Incorrect PIN"}), 403
+    pick_id = data.get("pick_id")
+    pick = _row(db_fetchone(
+        "SELECT * FROM draft_picks WHERE id=%s" if DB_TYPE == "postgres" else "SELECT * FROM draft_picks WHERE id=?",
+        (pick_id,)))
+    if not pick:
+        return jsonify({"error": "Pick not found"}), 404
+
+    kind = data.get("kind"); position = data.get("position")
+    dropped_player_id = data.get("dropped_player_id"); dropped_club_name = data.get("dropped_club_name")
+    added_player_id   = data.get("added_player_id");   added_club_name   = data.get("added_club_name")
+    args = (kind, position, dropped_player_id, dropped_club_name, added_player_id, added_club_name, pick_id)
+    if DB_TYPE == "postgres":
+        db_execute("""UPDATE draft_picks SET status='done', kind=%s, position=%s, dropped_player_id=%s,
+            dropped_club_name=%s, added_player_id=%s, added_club_name=%s WHERE id=%s""", args)
+    else:
+        db_execute("""UPDATE draft_picks SET status='done', kind=?, position=?, dropped_player_id=?,
+            dropped_club_name=?, added_player_id=?, added_club_name=? WHERE id=?""", args)
+
+    # Re-apply the corrected slot to the real squad too, so the fix isn't just cosmetic in the log
+    if kind == "gk" and position and added_club_name:
+        slot = int(position.replace("gk", ""))
+        _apply_gk_slot(pick["team_id"], slot, added_club_name)
+    elif position and added_player_id is not None:
+        _apply_squad_slot(pick["team_id"], position, added_player_id)
+
+    return jsonify(build_draft_response())
 
 @app.route("/api/health")
 def health():
