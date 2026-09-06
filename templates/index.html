@@ -199,7 +199,7 @@
   .admin-save-toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#00cc6a;color:#fff;padding:10px 24px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.5px;z-index:100;opacity:0;transition:opacity .3s;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.2);}
   .admin-save-toast.show{opacity:1;}
   .bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:var(--navy);border-top:3px solid #00ff87;display:flex;justify-content:space-around;padding:10px 0 env(safe-area-inset-bottom,10px);box-shadow:0 -4px 20px rgba(0,0,0,0.3);}
-  .bn-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 16px;cursor:pointer;color:rgba(255,255,255,0.5);transition:all .2s;}
+  .bn-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 10px;cursor:pointer;color:rgba(255,255,255,0.5);transition:all .2s;}
   .bn-item.active{color:#00ff87;}.bn-item.active .bn-icon{transform:scale(1.15);}
   .bn-icon{font-size:22px;line-height:1;transition:transform .2s;}
   .bn-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:700;}
@@ -231,6 +231,52 @@
     .score-sep{font-size:18px;}
     .team-name-big{font-size:11px;}
   }
+  @media (max-width:400px){
+    .bn-item{padding:4px 6px;}
+    .bn-label{font-size:8px;}
+    .bn-icon{font-size:19px;}
+  }
+
+  /* ── DRAFT TAB ────────────────────────────────────────────────────────── */
+  .draft-pill{display:none;align-items:center;gap:6px;background:#c0392b;border-radius:20px;padding:5px 12px;margin:8px auto 0;max-width:fit-content;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);}
+  .draft-pill-dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1.4s ease-in-out infinite;}
+  #draftPillText{font-size:11px;font-weight:700;color:#fff;letter-spacing:.3px;}
+  .draft-banner{background:linear-gradient(135deg,var(--navy),var(--navy-light));border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow-lg);text-align:center;}
+  .draft-banner-label{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.6);margin-bottom:4px;}
+  .draft-banner-team{font-family:'Bebas Neue',sans-serif;font-size:26px;color:#00ff87;letter-spacing:1px;line-height:1.1;}
+  .draft-banner-manager{font-size:12px;color:rgba(255,255,255,.8);margin-top:2px;}
+  .draft-banner.done{background:linear-gradient(135deg,#1a6b3f,#0d4a2a);}
+  .draft-setup-card,.draft-summary-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px;box-shadow:var(--shadow);}
+  .draft-setup-title{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--navy);letter-spacing:1px;margin-bottom:10px;}
+  .draft-order-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;background:var(--card-alt);margin-bottom:5px;}
+  .draft-order-num{font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--navy);min-width:20px;}
+  .draft-order-name{flex:1;font-size:12px;font-weight:600;color:var(--white);}
+  .draft-order-mgr{font-size:10px;color:var(--muted);}
+  .draft-order-btns{display:flex;gap:3px;}
+  .draft-order-btns button{background:var(--navy);color:#fff;border:none;border-radius:5px;width:24px;height:24px;font-size:12px;cursor:pointer;}
+  .draft-order-btns button:disabled{opacity:.25;cursor:default;}
+  .draft-setup-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
+  .draft-btn{border:none;border-radius:8px;padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;}
+  .draft-btn-secondary{background:var(--card-alt);color:var(--navy);border:1px solid var(--border-hi);}
+  .draft-btn-primary{background:#00cc6a;color:#fff;}
+  .draft-btn-danger{background:#c0392b;color:#fff;}
+  .draft-btn:disabled{opacity:.4;cursor:default;}
+  .draft-pick-row{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+  .draft-pick-row.is-active{border:2px solid #00cc6a;box-shadow:0 0 0 3px rgba(0,204,106,.12);}
+  .draft-pick-row.is-pending{opacity:.55;}
+  .draft-pick-head{display:flex;align-items:center;gap:8px;}
+  .draft-pick-turn{font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--muted);min-width:18px;}
+  .draft-pick-team{font-size:13px;font-weight:700;color:var(--navy);flex:1;}
+  .draft-pick-mgr{font-size:10px;color:var(--muted);}
+  .draft-pick-status{font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:700;padding:3px 8px;border-radius:10px;}
+  .status-done{background:#e6f7ee;color:#0d8a4f;}
+  .status-passed{background:#f1f2f4;color:#6b7280;}
+  .status-active{background:#00cc6a;color:#fff;}
+  .status-pending{background:#f1f2f4;color:#9ca3af;}
+  .draft-pick-detail{font-size:11px;color:var(--muted);margin-top:4px;padding-left:26px;}
+  .draft-edit-link{font-size:9px;color:var(--navy);text-decoration:underline;cursor:pointer;margin-left:6px;}
+  .draft-turn-card{margin-top:10px;border-top:2px dashed var(--border);padding-top:10px;}
+  .draft-turn-actions{display:flex;gap:8px;margin-top:10px;}
 </style>
 </head>
 <body>
@@ -253,6 +299,9 @@
       <button class="gw-nav-btn" id="gwNext" onclick="changeGW(1)" disabled>›</button>
     </div>
   </div>
+  <div class="draft-pill" id="draftPill" onclick="showPage('draft')" style="display:none">
+    <span class="draft-pill-dot"></span><span id="draftPillText">Draft live</span>
+  </div>
 </header>
 <nav>
   <div class="nav-inner">
@@ -260,6 +309,7 @@
     <div class="nav-item" onclick="showPage('fixtures',this)">Fixtures</div>
     <div class="nav-item" onclick="showPage('ladder',this)">Ladder</div>
     <div class="nav-item" onclick="showPage('squads',this)">Squads</div>
+    <div class="nav-item" onclick="showPage('draft',this)">Draft</div>
     <div class="nav-item" onclick="showPage('admin',this)">Team Admin</div>
   </div>
 </nav>
@@ -291,6 +341,10 @@
     <div class="status-bar"><h1 class="section-title">Team Admin</h1><div style="font-size:11px;color:var(--muted)">Click any player to swap them out</div></div>
     <div id="adminBody"><div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading squads…</div></div></div>
   </div>
+  <div class="page" id="page-draft">
+    <div class="status-bar"><h1 class="section-title">Draft</h1><div style="font-size:11px;color:var(--muted)">Monthly snake draft</div></div>
+    <div id="draftBody"><div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading draft…</div></div></div>
+  </div>
   <div class="page" id="page-squads">
     <div class="status-bar"><h1 class="section-title">Squads</h1></div>
     <div id="squadsBody"><div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading squads…</div></div></div>
@@ -302,6 +356,7 @@
   <div class="bn-item" onclick="showPage('fixtures',this)"><div class="bn-icon">📅</div><div class="bn-label">Fixtures</div></div>
   <div class="bn-item" onclick="showPage('ladder',this)"><div class="bn-icon">📊</div><div class="bn-label">Ladder</div></div>
   <div class="bn-item" onclick="showPage('squads',this)"><div class="bn-icon">👥</div><div class="bn-label">Squads</div></div>
+  <div class="bn-item" onclick="showPage('draft',this)"><div class="bn-icon">🔀</div><div class="bn-label">Draft</div></div>
   <div class="bn-item" onclick="showPage('admin',this)"><div class="bn-icon">✏️</div><div class="bn-label">Admin</div></div>
 </div>
 <script>
@@ -394,6 +449,13 @@ let openCardId=null;
 let openAdminTeams=new Set(); // track which card is open so refresh preserves it
 let rawFixtures=[], playerStats={}, teamIdToShort={}, teamIdToName={};
 let openFixtureId=null;
+
+// ── DRAFT STATE ───────────────────────────────────────────────────────────────
+let draftData=null;               // {active, recent} from /api/draft
+let draftOrderBuilder=[];         // team id order being set up (pre-draft)
+let draftStaged=null;             // {kind,position,dropped_*,added_*} for the in-progress turn
+let draftEditContext=null;        // {mode:'turn'|'override', teamId, pickId}
+let draftSearchActive=null;       // {posKey,posType,isGK,slot} — which row's search is open in the draft UI
 
 // ── SQUAD OVERRIDES ───────────────────────────────────────────────────────────
 function applySquadOverrides(savedSquads, savedGKs){
@@ -560,12 +622,13 @@ function showPage(name,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item,.bn-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  const idx=['matchups','fixtures','ladder','squads','admin'].indexOf(name);
+  const idx=['matchups','fixtures','ladder','squads','draft','admin'].indexOf(name);
   if(idx>=0){document.querySelectorAll('.nav-item')[idx]?.classList.add('active');document.querySelectorAll('.bn-item')[idx]?.classList.add('active');}
   currentPage=name;
   if(name==='fixtures')renderFixtures();
   if(name==='ladder')renderLadder();
   if(name==='squads')renderSquads();
+  if(name==='draft')renderDraft();
   if(name==='admin')renderAdmin();
 }
 
@@ -1182,6 +1245,286 @@ async function selectGKClub(clubName){
 function closeSearch(){document.getElementById('search-wrap')?.remove();document.querySelectorAll('.admin-player-row.editing').forEach(r=>r.classList.remove('editing'));activeSearch=null;}
 function showToast(msg){const t=document.getElementById('saveToast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 
+// ── DRAFT ────────────────────────────────────────────────────────────────────
+function draftTeam(id){return TEAMS.find(t=>t.id===id);}
+
+function updateDraftPill(){
+  const pill=document.getElementById('draftPill');
+  if(!draftData?.active){pill.style.display='none';return;}
+  const cur=draftData.active.picks.find(p=>p.status==='active');
+  pill.style.display='flex';
+  document.getElementById('draftPillText').textContent=cur?`Draft live — ${draftTeam(cur.team_id)?.manager||'?'}'s turn`:'Draft — all picks in';
+}
+
+async function loadDraft(){
+  try{draftData=await apiFetch('/api/draft');}catch(e){console.warn('Draft load failed:',e);return;}
+  updateDraftPill();
+  if(currentPage==='draft')renderDraft();
+}
+
+function renderDraft(){
+  const body=document.getElementById('draftBody');
+  if(!draftData){body.innerHTML='<div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading draft…</div></div>';return;}
+  if(draftData.active){body.innerHTML=renderActiveDraft(draftData.active);}
+  else{body.innerHTML=renderDraftSetup();}
+}
+
+// ── SETUP (no active draft) ─────────────────────────────────────────────────
+function renderDraftSetup(){
+  if(!draftOrderBuilder.length||!draftOrderBuilder.every(id=>draftTeam(id))){
+    draftOrderBuilder=draftData?.recent?.order?.length===TEAMS.length?[...draftData.recent.order]:TEAMS.map(t=>t.id);
+  }
+  const rows=draftOrderBuilder.map((tid,i)=>{
+    const t=draftTeam(tid);if(!t)return'';
+    return`<div class="draft-order-row"><div class="draft-order-num">${i+1}</div><div><div class="draft-order-name">${t.name}</div><div class="draft-order-mgr">${t.manager}</div></div><div class="draft-order-btns"><button onclick="moveDraftOrder(${i},-1)" ${i===0?'disabled':''}>▲</button><button onclick="moveDraftOrder(${i},1)" ${i===draftOrderBuilder.length-1?'disabled':''}>▼</button></div></div>`;
+  }).join('');
+  const recentBtn=draftData?.recent?`<button class="draft-btn draft-btn-secondary" onclick="useRecentOrder(false)">Same as last</button><button class="draft-btn draft-btn-secondary" onclick="useRecentOrder(true)">Reverse last</button>`:'';
+  const summary=draftData?.recent?renderDraftSummary(draftData.recent,'Most recent draft'):'';
+  return`
+    <div class="draft-setup-card">
+      <div class="draft-setup-title">Set the draft order</div>
+      ${rows}
+      <div class="draft-setup-actions">
+        ${recentBtn}
+        <button class="draft-btn draft-btn-secondary" onclick="shuffleDraftOrder()">Shuffle</button>
+      </div>
+      <div class="draft-setup-actions">
+        <button class="draft-btn draft-btn-primary" onclick="startDraft()">Start Draft</button>
+      </div>
+    </div>
+    ${summary}`;
+}
+
+function moveDraftOrder(i,dir){
+  const j=i+dir;if(j<0||j>=draftOrderBuilder.length)return;
+  [draftOrderBuilder[i],draftOrderBuilder[j]]=[draftOrderBuilder[j],draftOrderBuilder[i]];
+  renderDraft();
+}
+function shuffleDraftOrder(){
+  for(let i=draftOrderBuilder.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[draftOrderBuilder[i],draftOrderBuilder[j]]=[draftOrderBuilder[j],draftOrderBuilder[i]];}
+  renderDraft();
+}
+function useRecentOrder(reverse){
+  if(!draftData?.recent?.order?.length)return;
+  draftOrderBuilder=reverse?[...draftData.recent.order].reverse():[...draftData.recent.order];
+  renderDraft();
+}
+async function startDraft(){
+  const pin=prompt('Commissioner PIN to start the draft:');
+  if(pin===null)return;
+  try{
+    const res=await fetch('/api/draft/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,team_ids:draftOrderBuilder})}).then(r=>r.json());
+    if(res.error){alert(res.error);return;}
+    draftData=res;renderDraft();updateDraftPill();
+  }catch(e){alert('Could not start draft — try again.');}
+}
+
+// ── ACTIVE DRAFT ─────────────────────────────────────────────────────────────
+function renderActiveDraft(session){
+  const activePick=session.picks.find(p=>p.status==='active');
+  const banner=activePick
+    ?`<div class="draft-banner"><div class="draft-banner-label">Now picking</div><div class="draft-banner-team">${draftTeam(activePick.team_id)?.name||'?'}</div><div class="draft-banner-manager">${draftTeam(activePick.team_id)?.manager||''}</div></div>`
+    :`<div class="draft-banner done"><div class="draft-banner-label">All picks in</div><div class="draft-banner-team">Ready to close out</div></div>`;
+  const rows=session.picks.map(p=>renderDraftPickRow(p,p.id===activePick?.id)).join('');
+  return`${banner}
+    <div class="draft-setup-actions"><button class="draft-btn draft-btn-danger" onclick="endDraft()">End Draft</button></div>
+    ${rows}`;
+}
+
+function draftPickDetailText(p){
+  if(p.status==='passed')return'Passed';
+  if(p.status!=='done')return'';
+  if(p.kind==='gk')return`Dropped ${p.dropped_club_name||'—'} → Added ${p.added_club_name||'—'}`;
+  const dropName=playerMap[p.dropped_player_id]?.name||(p.dropped_player_id?('#'+p.dropped_player_id):'—');
+  const addName=playerMap[p.added_player_id]?.name||(p.added_player_id?('#'+p.added_player_id):'—');
+  return`Dropped ${dropName} → Added ${addName}`;
+}
+
+function renderDraftPickRow(p,isActive){
+  const t=draftTeam(p.team_id);
+  const cls=isActive?'is-active':(p.status==='pending'?'is-pending':'');
+  const statusLabel={done:'Done',passed:'Passed',active:'Your Turn',pending:'Waiting'}[p.status]||p.status;
+  const detail=(p.status==='done'||p.status==='passed')?`<div class="draft-pick-detail">${draftPickDetailText(p)}${p.status==='done'?`<span class="draft-edit-link" onclick="openDraftOverride(${p.id})">edit</span>`:''}</div>`:'';
+  const turnCard=isActive?renderDraftTurnCard(t,p):'';
+  const overrideCard=(draftEditContext?.mode==='override'&&draftEditContext.pickId===p.id)?renderDraftTurnCard(t,p,true):'';
+  return`<div class="draft-pick-row ${cls}" id="dpick-${p.id}">
+    <div class="draft-pick-head">
+      <div class="draft-pick-turn">${p.turn_number}</div>
+      <div><div class="draft-pick-team">${t?.name||'#'+p.team_id}</div><div class="draft-pick-mgr">${t?.manager||''}</div></div>
+      <div class="draft-pick-status status-${p.status}">${statusLabel}</div>
+    </div>
+    ${detail}${turnCard}${overrideCard}
+  </div>`;
+}
+
+// One team's editable squad, reused for both the live turn and an override
+function renderDraftTurnCard(team,pick,isOverride){
+  if(!team)return'';
+  const posC={DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
+  const mkRow=(id,posKey,posType)=>{const p=playerMap[id];const name=p?.name??('#'+id);const club=p?.teamShort??'';return`<div class="admin-player-row" onclick="toggleDraftSearch('${posKey}','${posType}',${isOverride?'true':'false'})" id="darow-${posKey}${isOverride?'-ov':''}"><span class="pos-tag ${posC[posType]||'pos-def'}">${posType}</span><div class="admin-player-info"><div class="admin-player-name">${name} <span class="player-club">(${club})</span></div></div><span class="admin-edit-icon">✏️</span></div>`;};
+  const mkGKRow=(clubName,slot)=>`<div class="admin-player-row" onclick="toggleDraftGKSearch(${slot},${isOverride?'true':'false'})" id="darow-gk${slot}${isOverride?'-ov':''}"><span class="pos-tag pos-gk">GK</span><div class="admin-player-info"><div class="admin-player-name">${clubName}</div><div class="admin-player-meta">Club goalkeeper</div></div><span class="admin-edit-icon">✏️</span></div>`;
+  const gkRows=team.gk.map((c,i)=>mkGKRow(c,i+1)).join('');
+  const defRows=team.def.map((id,i)=>mkRow(id,`def${i+1}`,'DEF')).join('');
+  const midRows=team.mid.map((id,i)=>mkRow(id,`mid${i+1}`,'MID')).join('');
+  const fwdRows=team.fwd.map((id,i)=>mkRow(id,`fwd${i+1}`,'FWD')).join('');
+  const staged=isOverride?null:draftStaged; // override confirms immediately via its own button
+  const actions=isOverride
+    ?`<div class="draft-turn-actions"><button class="draft-btn draft-btn-primary" onclick="saveDraftOverride(${pick.id})">Save Correction</button><button class="draft-btn draft-btn-secondary" onclick="closeDraftOverride()">Cancel</button></div>`
+    :`<div class="draft-turn-actions"><button class="draft-btn draft-btn-primary" onclick="confirmDraftPick(${pick.id})" ${staged?'':'disabled'}>Confirm Pick</button><button class="draft-btn draft-btn-secondary" onclick="passDraftPick(${pick.id})">Pass</button></div>`;
+  return`<div class="draft-turn-card">
+    <div class="admin-pos-label">Goalkeepers</div>${gkRows}
+    <div class="admin-pos-label">Defenders</div>${defRows}
+    <div class="admin-pos-label">Midfielders</div>${midRows}
+    <div class="admin-pos-label">Forwards</div>${fwdRows}
+    ${actions}
+  </div>`;
+}
+
+function renderDraftSummary(session,title){
+  const rows=session.picks.map(p=>{
+    const t=draftTeam(p.team_id);
+    const editLink=p.status==='done'?`<span class="draft-edit-link" onclick="openDraftOverride(${p.id})">edit</span>`:'';
+    const overrideCard=(draftEditContext?.mode==='override'&&draftEditContext.pickId===p.id)?renderDraftTurnCard(t,p,true):'';
+    return`<div class="draft-pick-row"><div class="draft-pick-head"><div class="draft-pick-turn">${p.turn_number}</div><div><div class="draft-pick-team">${t?.name||'#'+p.team_id}</div><div class="draft-pick-mgr">${t?.manager||''}</div></div><div class="draft-pick-status status-${p.status}">${({done:'Done',passed:'Passed'}[p.status])||p.status}</div></div><div class="draft-pick-detail">${draftPickDetailText(p)}${editLink}</div>${overrideCard}</div>`;
+  }).join('');
+  return`<div class="draft-summary-card"><div class="draft-setup-title">${title}</div>${rows}</div>`;
+}
+
+// ── DRAFT SEARCH (live turn) ─────────────────────────────────────────────────
+function toggleDraftSearch(posKey,posType,isOverride){
+  const same=draftSearchActive&&draftSearchActive.posKey===posKey&&draftSearchActive.isOverride===isOverride;
+  closeDraftSearch();
+  if(same)return;
+  draftSearchActive={posKey,posType,isGK:false,isOverride};
+  const rowEl=document.getElementById(`darow-${posKey}${isOverride?'-ov':''}`);if(!rowEl)return;
+  rowEl.classList.add('editing');
+  const typeMap={DEF:2,MID:3,FWD:4};
+  const wrap=document.createElement('div');wrap.className='player-search-wrap';wrap.id='draft-search-wrap';
+  wrap.innerHTML=`<input class="player-search-input" id="draftSearchInput" placeholder="Search ${posType} players..." oninput="filterDraftSearch(${typeMap[posType]})" autocomplete="off"><div class="player-search-results" id="draftSearchResults"></div><button class="search-cancel" onclick="closeDraftSearch()">Cancel</button>`;
+  rowEl.insertAdjacentElement('afterend',wrap);
+  document.getElementById('draftSearchInput').focus();
+  filterDraftSearch(typeMap[posType]);
+}
+function toggleDraftGKSearch(slot,isOverride){
+  const same=draftSearchActive&&draftSearchActive.isGK&&draftSearchActive.slot===slot&&draftSearchActive.isOverride===isOverride;
+  closeDraftSearch();
+  if(same)return;
+  draftSearchActive={isGK:true,slot,isOverride};
+  const rowEl=document.getElementById(`darow-gk${slot}${isOverride?'-ov':''}`);if(!rowEl)return;
+  rowEl.classList.add('editing');
+  const wrap=document.createElement('div');wrap.className='player-search-wrap';wrap.id='draft-search-wrap';
+  wrap.innerHTML=`<input class="player-search-input" id="draftSearchInput" placeholder="Search club name..." oninput="filterDraftGKSearch()" autocomplete="off"><div class="player-search-results" id="draftSearchResults"></div><button class="search-cancel" onclick="closeDraftSearch()">Cancel</button>`;
+  rowEl.insertAdjacentElement('afterend',wrap);
+  document.getElementById('draftSearchInput').focus();
+  filterDraftGKSearch();
+}
+function closeDraftSearch(){document.getElementById('draft-search-wrap')?.remove();document.querySelectorAll('#draftBody .admin-player-row.editing').forEach(r=>r.classList.remove('editing'));draftSearchActive=null;}
+
+function filterDraftSearch(fplType){
+  const q=(document.getElementById('draftSearchInput')?.value||'').toLowerCase();
+  const usedIds=getAllUsedPlayerIds();
+  const teamGroups={};
+  allPlayers.filter(p=>p.type===fplType&&!usedIds.has(p.id)&&(q.length<2||p.name.toLowerCase().includes(q)||p.teamShort.toLowerCase().includes(q)))
+    .forEach(p=>{if(!teamGroups[p.teamShort])teamGroups[p.teamShort]=[];teamGroups[p.teamShort].push(p);});
+  const items=Object.keys(teamGroups).sort().flatMap(ts=>teamGroups[ts].map(p=>`<div class="search-result-item" onclick="selectDraftPlayer(${p.id})"><span class="pos-tag ${p.type===2?'pos-def':p.type===3?'pos-mid':'pos-fwd'}">${p.type===2?'DEF':p.type===3?'MID':'FWD'}</span><div><div class="search-result-name">${p.name} <span style="font-size:9px;opacity:.6">(${p.teamShort})</span></div><div class="search-result-meta">${p.seasonPts} pts season</div></div></div>`));
+  document.getElementById('draftSearchResults').innerHTML=items.length?items.join(''):'<div style="padding:12px;color:var(--muted);font-size:12px;text-align:center">No available players</div>';
+}
+function filterDraftGKSearch(){
+  const q=(document.getElementById('draftSearchInput')?.value||'').toLowerCase();
+  const clubs=Object.entries(clubNameToId).filter(([k])=>k.length>4&&(q.length<1||k.toLowerCase().includes(q))).sort(([a],[b])=>a.localeCompare(b)).slice(0,25);
+  document.getElementById('draftSearchResults').innerHTML=clubs.map(([name])=>`<div class="search-result-item" onclick="selectDraftGKClub('${name}')"><span class="pos-tag pos-gk">GK</span><div class="search-result-name">${name}</div></div>`).join('')||'<div style="padding:12px;color:var(--muted);font-size:12px;text-align:center">No clubs found</div>';
+}
+
+async function selectDraftPlayer(playerId){
+  if(!draftSearchActive)return;
+  const{posKey,isOverride}=draftSearchActive;
+  const activePick=draftData.active.picks.find(p=>p.status==='active');
+  const pick=isOverride?draftData.active.picks.find(p=>p.id===draftEditContext.pickId):activePick;
+  if(!pick)return;
+  const team=draftTeam(pick.team_id);if(!team)return;
+  closeDraftSearch();
+  let droppedId;
+  if(posKey.startsWith('def')){const i=parseInt(posKey.replace('def',''))-1;droppedId=team.def[i];team.def[i]=playerId;}
+  else if(posKey.startsWith('mid')){const i=parseInt(posKey.replace('mid',''))-1;droppedId=team.mid[i];team.mid[i]=playerId;}
+  else if(posKey.startsWith('fwd')){const i=parseInt(posKey.replace('fwd',''))-1;droppedId=team.fwd[i];team.fwd[i]=playerId;}
+  const stage={kind:'outfield',position:posKey,dropped_player_id:droppedId,added_player_id:playerId};
+  if(isOverride)draftEditContext.staged=stage;else draftStaged=stage;
+  try{
+    await fetch(`/api/squads/${team.id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:posKey,player_id:playerId})});
+    showToast('✓ Saved to squad');
+  }catch(e){showToast('⚠ Save failed');}
+  gwCache={};await loadGWData(selectedGW);
+  renderDraft();renderMatchups();
+  if(currentPage==='squads')renderSquads();
+  if(currentPage==='admin')renderAdmin();
+}
+async function selectDraftGKClub(clubName){
+  if(!draftSearchActive)return;
+  const{slot,isOverride}=draftSearchActive;
+  const activePick=draftData.active.picks.find(p=>p.status==='active');
+  const pick=isOverride?draftData.active.picks.find(p=>p.id===draftEditContext.pickId):activePick;
+  if(!pick)return;
+  const team=draftTeam(pick.team_id);if(!team)return;
+  closeDraftSearch();
+  const droppedClub=team.gk[slot-1];
+  team.gk[slot-1]=clubName;
+  const stage={kind:'gk',position:`gk${slot}`,dropped_club_name:droppedClub,added_club_name:clubName};
+  if(isOverride)draftEditContext.staged=stage;else draftStaged=stage;
+  try{
+    await fetch(`/api/squads/${team.id}/gk`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slot,club_name:clubName})});
+    showToast('✓ Saved to squad');
+  }catch(e){showToast('⚠ Save failed');}
+  gwCache={};await loadGWData(selectedGW);
+  renderDraft();renderMatchups();
+  if(currentPage==='squads')renderSquads();
+  if(currentPage==='admin')renderAdmin();
+}
+
+async function confirmDraftPick(pickId){
+  if(!draftStaged){alert('Choose a player (or club) to add first.');return;}
+  try{
+    const res=await fetch('/api/draft/pick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pick_id:pickId,action:'pick',...draftStaged})}).then(r=>r.json());
+    if(res.error){alert(res.error);return;}
+    draftStaged=null;draftData=res;renderDraft();updateDraftPill();
+  }catch(e){alert('Could not save pick — try again.');}
+}
+async function passDraftPick(pickId){
+  try{
+    const res=await fetch('/api/draft/pick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pick_id:pickId,action:'pass'})}).then(r=>r.json());
+    if(res.error){alert(res.error);return;}
+    draftStaged=null;draftData=res;renderDraft();updateDraftPill();
+  }catch(e){alert('Could not save pass — try again.');}
+}
+async function endDraft(){
+  const pin=prompt('Commissioner PIN to end the draft:');
+  if(pin===null)return;
+  try{
+    const res=await fetch('/api/draft/end',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin})}).then(r=>r.json());
+    if(res.error){alert(res.error);return;}
+    draftData=res;draftOrderBuilder=[];renderDraft();updateDraftPill();
+  }catch(e){alert('Could not end draft — try again.');}
+}
+
+// ── OVERRIDE (fix a past pick) ───────────────────────────────────────────────
+function openDraftOverride(pickId){
+  closeDraftSearch();
+  const pick=draftData.active?.picks?.find(p=>p.id===pickId)||draftData.recent?.picks?.find(p=>p.id===pickId);
+  if(!pick)return;
+  draftEditContext={mode:'override',teamId:pick.team_id,pickId,staged:null};
+  renderDraft();
+}
+function closeDraftOverride(){draftEditContext=null;closeDraftSearch();renderDraft();}
+async function saveDraftOverride(pickId){
+  if(!draftEditContext?.staged){alert('Make a correction first.');return;}
+  const pin=prompt('Commissioner PIN to save this correction:');
+  if(pin===null)return;
+  try{
+    const res=await fetch('/api/draft/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,pick_id:pickId,...draftEditContext.staged})}).then(r=>r.json());
+    if(res.error){alert(res.error);return;}
+    draftEditContext=null;draftData=res;renderDraft();updateDraftPill();
+  }catch(e){alert('Could not save correction — try again.');}
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 async function apiFetch(p){const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();}
 
@@ -1249,6 +1592,7 @@ async function loadAll(){
   if(currentPage==='ladder')renderLadder();
     if(currentPage==='squads')renderSquads();
     if(currentPage==='admin')renderAdmin();
+    await loadDraft();
   }catch(err){
     document.getElementById('matchupsBody').innerHTML='<div class="error-state"><strong>Could not load FPL data</strong><br>'+err.message+'</div>';
   }finally{if(icon)icon.classList.remove('spinning');}
@@ -1278,6 +1622,7 @@ async function refreshCurrent(){
 
 loadAll();
 setInterval(refreshCurrent,60000);
+setInterval(loadDraft,8000); // faster poll so a live draft feels responsive across devices
 </script>
 </body>
 </html>
