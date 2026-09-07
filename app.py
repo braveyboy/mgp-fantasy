@@ -404,15 +404,20 @@ def draft_pick():
         (pick_id,)))
     if not pick:
         return jsonify({"error": "Pick not found"}), 404
-    if pick["status"] != "active":
-        return jsonify({"error": "This pick is not the current turn"}), 409
 
+    # A pick can be completed from 'active' (its own turn) or 'passed' (going back to
+    # resume a turn someone skipped earlier). Passing only makes sense from 'active'.
+    # 'done' picks are locked and can only be changed via the PIN-gated override endpoint.
     if action == "pass":
+        if pick["status"] != "active":
+            return jsonify({"error": "Only the current turn can be passed"}), 409
         if DB_TYPE == "postgres":
             db_execute("UPDATE draft_picks SET status='passed', completed_at=NOW() WHERE id=%s", (pick_id,))
         else:
             db_execute("UPDATE draft_picks SET status='passed', completed_at=datetime('now') WHERE id=?", (pick_id,))
     elif action == "pick":
+        if pick["status"] not in ("active", "passed"):
+            return jsonify({"error": "This pick is not available"}), 409
         kind = data.get("kind"); position = data.get("position")
         if not kind or not position:
             return jsonify({"error": "Missing pick details"}), 400
@@ -427,11 +432,13 @@ def draft_pick():
     else:
         return jsonify({"error": "Invalid action"}), 400
 
-    next_pick = db_fetchone(
-        "SELECT id FROM draft_picks WHERE session_id=%s AND turn_number=%s" if DB_TYPE == "postgres" else
-        "SELECT id FROM draft_picks WHERE session_id=? AND turn_number=?",
-        (pick["session_id"], pick["turn_number"] + 1))
-    if next_pick:
+    # Only auto-advance to the next turn if it hasn't been reached yet. Resuming an
+    # earlier passed pick out of sequence must not disturb whichever turn is currently active.
+    next_pick = _row(db_fetchone(
+        "SELECT id, status FROM draft_picks WHERE session_id=%s AND turn_number=%s" if DB_TYPE == "postgres" else
+        "SELECT id, status FROM draft_picks WHERE session_id=? AND turn_number=?",
+        (pick["session_id"], pick["turn_number"] + 1)))
+    if next_pick and next_pick["status"] == "pending":
         db_execute("UPDATE draft_picks SET status='active' WHERE id=%s" if DB_TYPE == "postgres" else
                    "UPDATE draft_picks SET status='active' WHERE id=?", (next_pick["id"],))
 
