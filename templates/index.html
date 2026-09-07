@@ -1259,7 +1259,10 @@ function updateDraftPill(){
 async function loadDraft(){
   try{draftData=await apiFetch('/api/draft');}catch(e){console.warn('Draft load failed:',e);return;}
   updateDraftPill();
-  if(currentPage==='draft')renderDraft();
+  // Skip the redraw while a player/GK search box is open — a full re-render wipes that
+  // input (and any typed text/focus) out from under whoever is mid-pick. draftData itself
+  // is still refreshed above, so the very next safe render picks up the latest state.
+  if(currentPage==='draft'&&!draftSearchActive)renderDraft();
 }
 
 function renderDraft(){
@@ -1344,32 +1347,40 @@ function renderDraftPickRow(p,isActive){
   const t=draftTeam(p.team_id);
   const cls=isActive?'is-active':(p.status==='pending'?'is-pending':'');
   const statusLabel={done:'Done',passed:'Passed',active:'Your Turn',pending:'Waiting'}[p.status]||p.status;
-  const detail=(p.status==='done'||p.status==='passed')?`<div class="draft-pick-detail">${draftPickDetailText(p)}${p.status==='done'?`<span class="draft-edit-link" onclick="openDraftOverride(${p.id})">edit</span>`:''}</div>`:'';
-  const turnCard=isActive?renderDraftTurnCard(t,p):'';
-  const overrideCard=(draftEditContext?.mode==='override'&&draftEditContext.pickId===p.id)?renderDraftTurnCard(t,p,true):'';
+  const editLink=p.status==='done'?`<span class="draft-edit-link" onclick="openDraftOverride(${p.id})">edit</span>`
+    :p.status==='passed'?`<span class="draft-edit-link" onclick="openDraftResume(${p.id})">go back</span>`:'';
+  const detail=(p.status==='done'||p.status==='passed')?`<div class="draft-pick-detail">${draftPickDetailText(p)}${editLink}</div>`:'';
+  const turnCard=isActive?renderDraftTurnCard(t,p,'turn'):'';
+  const overrideCard=(draftEditContext?.mode==='override'&&draftEditContext.pickId===p.id)?renderDraftTurnCard(t,p,'override'):'';
+  const resumeCard=(draftEditContext?.mode==='resume'&&draftEditContext.pickId===p.id)?renderDraftTurnCard(t,p,'resume'):'';
   return`<div class="draft-pick-row ${cls}" id="dpick-${p.id}">
     <div class="draft-pick-head">
       <div class="draft-pick-turn">${p.turn_number}</div>
       <div><div class="draft-pick-team">${t?.name||'#'+p.team_id}</div><div class="draft-pick-mgr">${t?.manager||''}</div></div>
       <div class="draft-pick-status status-${p.status}">${statusLabel}</div>
     </div>
-    ${detail}${turnCard}${overrideCard}
+    ${detail}${turnCard}${overrideCard}${resumeCard}
   </div>`;
 }
 
-// One team's editable squad, reused for both the live turn and an override
-function renderDraftTurnCard(team,pick,isOverride){
+// One team's editable squad, reused for the live turn, a PIN-gated override of a done
+// pick, and resuming ("going back to") a pick someone passed on earlier.
+function renderDraftTurnCard(team,pick,mode){
   if(!team)return'';
+  mode=mode||'turn'; // 'turn' | 'override' | 'resume'
+  const suffix=mode==='override'?'-ov':(mode==='resume'?'-rs':'');
   const posC={DEF:'pos-def',MID:'pos-mid',FWD:'pos-fwd'};
-  const mkRow=(id,posKey,posType)=>{const p=playerMap[id];const name=p?.name??('#'+id);const club=p?.teamShort??'';return`<div class="admin-player-row" onclick="toggleDraftSearch('${posKey}','${posType}',${isOverride?'true':'false'})" id="darow-${posKey}${isOverride?'-ov':''}"><span class="pos-tag ${posC[posType]||'pos-def'}">${posType}</span><div class="admin-player-info"><div class="admin-player-name">${name} <span class="player-club">(${club})</span></div></div><span class="admin-edit-icon">✏️</span></div>`;};
-  const mkGKRow=(clubName,slot)=>`<div class="admin-player-row" onclick="toggleDraftGKSearch(${slot},${isOverride?'true':'false'})" id="darow-gk${slot}${isOverride?'-ov':''}"><span class="pos-tag pos-gk">GK</span><div class="admin-player-info"><div class="admin-player-name">${clubName}</div><div class="admin-player-meta">Club goalkeeper</div></div><span class="admin-edit-icon">✏️</span></div>`;
+  const mkRow=(id,posKey,posType)=>{const p=playerMap[id];const name=p?.name??('#'+id);const club=p?.teamShort??'';return`<div class="admin-player-row" onclick="toggleDraftSearch('${posKey}','${posType}','${mode}')" id="darow-${posKey}${suffix}"><span class="pos-tag ${posC[posType]||'pos-def'}">${posType}</span><div class="admin-player-info"><div class="admin-player-name">${name} <span class="player-club">(${club})</span></div></div><span class="admin-edit-icon">✏️</span></div>`;};
+  const mkGKRow=(clubName,slot)=>`<div class="admin-player-row" onclick="toggleDraftGKSearch(${slot},'${mode}')" id="darow-gk${slot}${suffix}"><span class="pos-tag pos-gk">GK</span><div class="admin-player-info"><div class="admin-player-name">${clubName}</div><div class="admin-player-meta">Club goalkeeper</div></div><span class="admin-edit-icon">✏️</span></div>`;
   const gkRows=team.gk.map((c,i)=>mkGKRow(c,i+1)).join('');
   const defRows=team.def.map((id,i)=>mkRow(id,`def${i+1}`,'DEF')).join('');
   const midRows=team.mid.map((id,i)=>mkRow(id,`mid${i+1}`,'MID')).join('');
   const fwdRows=team.fwd.map((id,i)=>mkRow(id,`fwd${i+1}`,'FWD')).join('');
-  const staged=isOverride?null:draftStaged; // override confirms immediately via its own button
-  const actions=isOverride
+  const staged=mode==='turn'?draftStaged:draftEditContext?.staged; // override/resume confirm via their own buttons
+  const actions=mode==='override'
     ?`<div class="draft-turn-actions"><button class="draft-btn draft-btn-primary" onclick="saveDraftOverride(${pick.id})">Save Correction</button><button class="draft-btn draft-btn-secondary" onclick="closeDraftOverride()">Cancel</button></div>`
+    :mode==='resume'
+    ?`<div class="draft-turn-actions"><button class="draft-btn draft-btn-primary" onclick="confirmDraftResume(${pick.id})" ${staged?'':'disabled'}>Confirm Pick</button><button class="draft-btn draft-btn-secondary" onclick="closeDraftResume()">Cancel</button></div>`
     :`<div class="draft-turn-actions"><button class="draft-btn draft-btn-primary" onclick="confirmDraftPick(${pick.id})" ${staged?'':'disabled'}>Confirm Pick</button><button class="draft-btn draft-btn-secondary" onclick="passDraftPick(${pick.id})">Pass</button></div>`;
   return`<div class="draft-turn-card">
     <div class="admin-pos-label">Goalkeepers</div>${gkRows}
@@ -1384,19 +1395,20 @@ function renderDraftSummary(session,title){
   const rows=session.picks.map(p=>{
     const t=draftTeam(p.team_id);
     const editLink=p.status==='done'?`<span class="draft-edit-link" onclick="openDraftOverride(${p.id})">edit</span>`:'';
-    const overrideCard=(draftEditContext?.mode==='override'&&draftEditContext.pickId===p.id)?renderDraftTurnCard(t,p,true):'';
+    const overrideCard=(draftEditContext?.mode==='override'&&draftEditContext.pickId===p.id)?renderDraftTurnCard(t,p,'override'):'';
     return`<div class="draft-pick-row"><div class="draft-pick-head"><div class="draft-pick-turn">${p.turn_number}</div><div><div class="draft-pick-team">${t?.name||'#'+p.team_id}</div><div class="draft-pick-mgr">${t?.manager||''}</div></div><div class="draft-pick-status status-${p.status}">${({done:'Done',passed:'Passed'}[p.status])||p.status}</div></div><div class="draft-pick-detail">${draftPickDetailText(p)}${editLink}</div>${overrideCard}</div>`;
   }).join('');
   return`<div class="draft-summary-card"><div class="draft-setup-title">${title}</div>${rows}</div>`;
 }
 
 // ── DRAFT SEARCH (live turn) ─────────────────────────────────────────────────
-function toggleDraftSearch(posKey,posType,isOverride){
-  const same=draftSearchActive&&draftSearchActive.posKey===posKey&&draftSearchActive.isOverride===isOverride;
+function toggleDraftSearch(posKey,posType,mode){
+  const same=draftSearchActive&&draftSearchActive.posKey===posKey&&draftSearchActive.mode===mode;
   closeDraftSearch();
   if(same)return;
-  draftSearchActive={posKey,posType,isGK:false,isOverride};
-  const rowEl=document.getElementById(`darow-${posKey}${isOverride?'-ov':''}`);if(!rowEl)return;
+  draftSearchActive={posKey,posType,isGK:false,mode};
+  const suffix=mode==='override'?'-ov':(mode==='resume'?'-rs':'');
+  const rowEl=document.getElementById(`darow-${posKey}${suffix}`);if(!rowEl)return;
   rowEl.classList.add('editing');
   const typeMap={DEF:2,MID:3,FWD:4};
   const wrap=document.createElement('div');wrap.className='player-search-wrap';wrap.id='draft-search-wrap';
@@ -1405,12 +1417,13 @@ function toggleDraftSearch(posKey,posType,isOverride){
   document.getElementById('draftSearchInput').focus();
   filterDraftSearch(typeMap[posType]);
 }
-function toggleDraftGKSearch(slot,isOverride){
-  const same=draftSearchActive&&draftSearchActive.isGK&&draftSearchActive.slot===slot&&draftSearchActive.isOverride===isOverride;
+function toggleDraftGKSearch(slot,mode){
+  const same=draftSearchActive&&draftSearchActive.isGK&&draftSearchActive.slot===slot&&draftSearchActive.mode===mode;
   closeDraftSearch();
   if(same)return;
-  draftSearchActive={isGK:true,slot,isOverride};
-  const rowEl=document.getElementById(`darow-gk${slot}${isOverride?'-ov':''}`);if(!rowEl)return;
+  draftSearchActive={isGK:true,slot,mode};
+  const suffix=mode==='override'?'-ov':(mode==='resume'?'-rs':'');
+  const rowEl=document.getElementById(`darow-gk${slot}${suffix}`);if(!rowEl)return;
   rowEl.classList.add('editing');
   const wrap=document.createElement('div');wrap.className='player-search-wrap';wrap.id='draft-search-wrap';
   wrap.innerHTML=`<input class="player-search-input" id="draftSearchInput" placeholder="Search club name..." oninput="filterDraftGKSearch()" autocomplete="off"><div class="player-search-results" id="draftSearchResults"></div><button class="search-cancel" onclick="closeDraftSearch()">Cancel</button>`;
@@ -1437,9 +1450,9 @@ function filterDraftGKSearch(){
 
 async function selectDraftPlayer(playerId){
   if(!draftSearchActive)return;
-  const{posKey,isOverride}=draftSearchActive;
+  const{posKey,mode}=draftSearchActive;
   const activePick=draftData.active.picks.find(p=>p.status==='active');
-  const pick=isOverride?draftData.active.picks.find(p=>p.id===draftEditContext.pickId):activePick;
+  const pick=mode==='turn'?activePick:draftData.active.picks.find(p=>p.id===draftEditContext.pickId);
   if(!pick)return;
   const team=draftTeam(pick.team_id);if(!team)return;
   closeDraftSearch();
@@ -1448,7 +1461,7 @@ async function selectDraftPlayer(playerId){
   else if(posKey.startsWith('mid')){const i=parseInt(posKey.replace('mid',''))-1;droppedId=team.mid[i];team.mid[i]=playerId;}
   else if(posKey.startsWith('fwd')){const i=parseInt(posKey.replace('fwd',''))-1;droppedId=team.fwd[i];team.fwd[i]=playerId;}
   const stage={kind:'outfield',position:posKey,dropped_player_id:droppedId,added_player_id:playerId};
-  if(isOverride)draftEditContext.staged=stage;else draftStaged=stage;
+  if(mode==='turn')draftStaged=stage;else draftEditContext.staged=stage;
   try{
     await fetch(`/api/squads/${team.id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({position:posKey,player_id:playerId})});
     showToast('✓ Saved to squad');
@@ -1460,16 +1473,16 @@ async function selectDraftPlayer(playerId){
 }
 async function selectDraftGKClub(clubName){
   if(!draftSearchActive)return;
-  const{slot,isOverride}=draftSearchActive;
+  const{slot,mode}=draftSearchActive;
   const activePick=draftData.active.picks.find(p=>p.status==='active');
-  const pick=isOverride?draftData.active.picks.find(p=>p.id===draftEditContext.pickId):activePick;
+  const pick=mode==='turn'?activePick:draftData.active.picks.find(p=>p.id===draftEditContext.pickId);
   if(!pick)return;
   const team=draftTeam(pick.team_id);if(!team)return;
   closeDraftSearch();
   const droppedClub=team.gk[slot-1];
   team.gk[slot-1]=clubName;
   const stage={kind:'gk',position:`gk${slot}`,dropped_club_name:droppedClub,added_club_name:clubName};
-  if(isOverride)draftEditContext.staged=stage;else draftStaged=stage;
+  if(mode==='turn')draftStaged=stage;else draftEditContext.staged=stage;
   try{
     await fetch(`/api/squads/${team.id}/gk`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slot,club_name:clubName})});
     showToast('✓ Saved to squad');
@@ -1523,6 +1536,27 @@ async function saveDraftOverride(pickId){
     if(res.error){alert(res.error);return;}
     draftEditContext=null;draftData=res;renderDraft();updateDraftPill();
   }catch(e){alert('Could not save correction — try again.');}
+}
+
+// ── RESUME (go back to a passed pick) ────────────────────────────────────────
+// No PIN needed — same trust model as making a pick on your own turn. Only picks
+// currently sitting at 'passed' can be resumed; 'done' picks stay locked to the
+// PIN-gated override above.
+function openDraftResume(pickId){
+  closeDraftSearch();
+  const pick=draftData.active?.picks?.find(p=>p.id===pickId);
+  if(!pick)return;
+  draftEditContext={mode:'resume',teamId:pick.team_id,pickId,staged:null};
+  renderDraft();
+}
+function closeDraftResume(){draftEditContext=null;closeDraftSearch();renderDraft();}
+async function confirmDraftResume(pickId){
+  if(!draftEditContext?.staged){alert('Choose a player (or club) to add first.');return;}
+  try{
+    const res=await fetch('/api/draft/pick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pick_id:pickId,action:'pick',...draftEditContext.staged})}).then(r=>r.json());
+    if(res.error){alert(res.error);return;}
+    draftEditContext=null;draftData=res;renderDraft();updateDraftPill();
+  }catch(e){alert('Could not save pick — try again.');}
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
