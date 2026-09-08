@@ -346,14 +346,67 @@ def _draft_session_payload(sess):
         "dropped_club_name, added_player_id, added_club_name, completed_at FROM draft_picks "
         "WHERE session_id=? ORDER BY turn_number",
         (sess["id"],))
+    # "order" is the round-1 draft order only (used by the setup screen's "Same as
+    # last" / "Reverse last" buttons). With multi-round snake drafts there are more
+    # picks than teams, so this must not just be every pick's team_id.
+    n_teams = len(set(p["team_id"] for p in picks)) if picks else 0
     return {
         "id": sess["id"],
         "status": sess["status"],
         "created_at": str(sess.get("created_at")) if sess.get("created_at") else None,
         "ended_at": str(sess.get("ended_at")) if sess.get("ended_at") else None,
-        "order": [p["team_id"] for p in picks],
+        "order": [p["team_id"] for p in picks[:n_teams]],
         "picks": [dict(p) for p in picks],
     }
+
+def _extend_draft_with_next_round(session_id, last_turn_number):
+    """Called after a turn is used up (picked or passed). If that turn was the
+    last one in its round and the draft is still active, generate the next
+    snake round automatically — reversing the previous round's team order —
+    so the draft keeps going indefinitely until a commissioner ends it via
+    /api/draft/end. Does nothing if the round isn't finished yet, the session
+    isn't active, or the next round already exists."""
+    n_row = db_fetchone(
+        "SELECT COUNT(DISTINCT team_id) AS n FROM draft_picks WHERE session_id=%s" if DB_TYPE == "postgres" else
+        "SELECT COUNT(DISTINCT team_id) AS n FROM draft_picks WHERE session_id=?",
+        (session_id,))
+    n = _row(n_row)["n"] if n_row else 0
+    if not n or last_turn_number % n != 0:
+        return  # round isn't finished yet
+
+    sess = _row(db_fetchone(
+        "SELECT status FROM draft_sessions WHERE id=%s" if DB_TYPE == "postgres" else
+        "SELECT status FROM draft_sessions WHERE id=?", (session_id,)))
+    if not sess or sess["status"] != "active":
+        return
+
+    already = db_fetchone(
+        "SELECT id FROM draft_picks WHERE session_id=%s AND turn_number=%s" if DB_TYPE == "postgres" else
+        "SELECT id FROM draft_picks WHERE session_id=? AND turn_number=?",
+        (session_id, last_turn_number + 1))
+    if already:
+        return  # next round already generated
+
+    round1 = db_fetchall(
+        "SELECT team_id FROM draft_picks WHERE session_id=%s AND turn_number<=%s ORDER BY turn_number" if DB_TYPE == "postgres" else
+        "SELECT team_id FROM draft_picks WHERE session_id=? AND turn_number<=? ORDER BY turn_number",
+        (session_id, n))
+    round1_order = [r["team_id"] for r in round1]
+
+    completed_rounds = last_turn_number // n
+    next_round_number = completed_rounds + 1
+    order = round1_order if next_round_number % 2 == 1 else list(reversed(round1_order))
+
+    start_turn = last_turn_number + 1
+    for i, tid in enumerate(order):
+        status = "active" if i == 0 else "pending"
+        turn = start_turn + i
+        if DB_TYPE == "postgres":
+            db_execute("INSERT INTO draft_picks (session_id, turn_number, team_id, status) VALUES (%s,%s,%s,%s)",
+                       (session_id, turn, tid, status))
+        else:
+            db_execute("INSERT INTO draft_picks (session_id, turn_number, team_id, status) VALUES (?,?,?,?)",
+                       (session_id, turn, tid, status))
 
 def build_draft_response():
     active_row = _row(db_fetchone("SELECT id, status, created_at, ended_at FROM draft_sessions WHERE status='active' ORDER BY id DESC LIMIT 1"))
@@ -441,6 +494,11 @@ def draft_pick():
     if next_pick and next_pick["status"] == "pending":
         db_execute("UPDATE draft_picks SET status='active' WHERE id=%s" if DB_TYPE == "postgres" else
                    "UPDATE draft_picks SET status='active' WHERE id=?", (next_pick["id"],))
+    elif not next_pick:
+        # No more turns exist yet — if that was the last pick of a round, snake
+        # into the next round automatically. The draft only ever stops when a
+        # commissioner explicitly ends it via /api/draft/end.
+        _extend_draft_with_next_round(pick["session_id"], pick["turn_number"])
 
     return jsonify(build_draft_response())
 
