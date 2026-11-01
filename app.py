@@ -71,6 +71,12 @@ def init_db():
                         locked_at TIMESTAMP DEFAULT NOW()
                     )""")
                 cur.execute("""
+                    CREATE TABLE IF NOT EXISTS void_gws (
+                        gw INTEGER PRIMARY KEY,
+                        note TEXT,
+                        created_at TIMESTAMP DEFAULT NOW()
+                    )""")
+                cur.execute("""
                     CREATE TABLE IF NOT EXISTS draft_sessions (
                         id SERIAL PRIMARY KEY,
                         status TEXT NOT NULL DEFAULT 'active',
@@ -113,6 +119,8 @@ def init_db():
                 PRIMARY KEY (gw, team_id))""")
             conn.execute("""CREATE TABLE IF NOT EXISTS locked_gws (
                 gw INTEGER PRIMARY KEY, locked_at TEXT DEFAULT (datetime('now')))""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS void_gws (
+                gw INTEGER PRIMARY KEY, note TEXT, created_at TEXT DEFAULT (datetime('now')))""")
             conn.execute("""CREATE TABLE IF NOT EXISTS draft_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, status TEXT NOT NULL DEFAULT 'active',
                 created_at TEXT DEFAULT (datetime('now')), ended_at TEXT)""")
@@ -177,6 +185,9 @@ def build_squads_response():
     locked    = db_fetchall("SELECT gw FROM locked_gws")
     snaps     = db_fetchall("SELECT gw, team_id, squad_json, best_xi_score FROM gw_snapshots")
     overrides = db_fetchall("SELECT gw, team_id, score FROM score_overrides")
+    # GWs declared void (fewer than 6 PL matches played): no result, ladder skips them.
+    # Rows are added by the commissioner via Claude (no public endpoint on purpose).
+    voids     = db_fetchall("SELECT gw FROM void_gws")
 
     squads = {}
     for row in rows:
@@ -204,6 +215,7 @@ def build_squads_response():
         "squads": squads,
         "gk_clubs": gks,
         "locked_gws": [r["gw"] for r in locked],
+        "void_gws": [r["gw"] for r in voids],
         "snapshots": snapshots,
         "overrides": ovr,
     }

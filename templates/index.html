@@ -363,8 +363,8 @@
 // ── LEAGUE DATA ───────────────────────────────────────────────────────────────
 // 2026-27 SEASON. Player IDs are real FPL element IDs for 2026-27 — verified against
 // fantasy.premierleague.com/api/bootstrap-static/ at time of setup. IDs reset every
-// season, so this whole block is disposable/replaceable each pre-season — see project
-// instructions.
+// season, so this whole block is disposable/replaceable each pre-season — see the
+// season rollover checklist in CLAUDE.md.
 const DEFAULT_TEAMS=[
   {id:1,name:"Eze on a Sunder Morning",short:"Eze on a Sunder Morning",manager:"Aaron",gk:["Liverpool","Sunderland"],def:[61,445,31,503,204,9,144],mid:[399,15,371,14,210,45,162],fwd:[411,346,492,463]},
   {id:2,name:"Strand Larcerny",short:"Strand Larcerny",manager:"Dean",gk:["Everton","Nott'm Forest"],def:[356,499,358,5,149,504,566],mid:[426,13,400,515,156,512,159],fwd:[25,222,464,527]},
@@ -386,10 +386,10 @@ const PENDING_PLAYERS={
 
 let TEAMS = DEFAULT_TEAMS.map(t=>({...t,def:[...t.def],mid:[...t.mid],fwd:[...t.fwd],gk:[...t.gk]}));
 
-// 7-round robin repeated 5x to cover GW1-35 (5*7=35). GW36-38 (finals) are NOT
-// defined here yet — that auto-generation from final standings is still an open
-// item (see project instructions "Features still to build"). The ladder page's
-// finals placeholder section shows projected top-4 slots in the meantime.
+// 7-round robin repeated 5x to cover GW1-35 (5*7=35). GW36-38 (finals) are not
+// listed here: getGW36Fixtures / getGW37Fixtures / getGW38Fixtures below generate
+// them from the final standings. Until the regular season is complete the ladder
+// page shows a provisional top-4 preview.
 const FIXTURES={
   1:[{home:5,away:1},{home:2,away:3},{home:7,away:8},{home:6,away:4}],
   2:[{home:3,away:5},{home:8,away:1},{home:4,away:2},{home:6,away:7}],
@@ -443,7 +443,7 @@ let playerMap={}, allPlayers=[], liveScores={}, gkScores={};
 let teamsWithGame=new Set(), teamsFinished=new Set(), clubNameToId={};
 let defaultGW=1, selectedGW=1, minGW=1, maxGW=38, gwEvents={};
 let dataChecked=false, currentPage='matchups', gwCache={};
-let lockedGWs=new Set(), gwSnapshots={}, scoreOverrides={};
+let lockedGWs=new Set(), gwSnapshots={}, scoreOverrides={}, voidGWs=new Set();
 let activeSearch=null;
 let openCardId=null;
 let openAdminTeams=new Set(); // track which card is open so refresh preserves it
@@ -482,13 +482,16 @@ function getAllUsedPlayerIds(){
 }
 
 // ── LOCKING ───────────────────────────────────────────────────────────────────
+// A GW locks the moment FPL confirms its bonus points (events[].data_checked).
+// Void GWs (fewer than 6 PL matches, recorded in the void_gws table) never lock.
 function shouldBeLocked(gw){
-  const nextEv=gwEvents[gw+1];if(!nextEv)return false;
-  return new Date()>new Date(nextEv.deadline_time);
+  if(voidGWs.has(gw))return false;
+  return gwEvents[gw]?.data_checked===true;
 }
 
 async function checkAndSnapshotGW(gw){
   if(lockedGWs.has(gw))return;
+  if(voidGWs.has(gw))return;
   if(!shouldBeLocked(gw))return;
   if(!getFixtures(gw))return;
   const gwData=gwCache[gw];if(!gwData)return;
@@ -514,8 +517,7 @@ function getTeamGWScore(teamId,gw){
 // ── FINALS BRACKET (GW36-38) ───────────────────────────────────────────────────
 // Auto-generates finals fixtures from real results. Nothing here is hardcoded —
 // once a stage completes, the next stage's matchup is computed fresh every render.
-// Draw tie-break: better regular-season seed advances (not expected in practice
-// with FPL scoring, but needed for a deterministic rule).
+// Draw tie-break: higher total regular-season points-for advances (see winnerOf).
 function isGWComplete(gw){
   const dc=gwEvents[gw]?.data_checked??false;
   const isHistorical=!!HISTORICAL[gw];
@@ -526,21 +528,54 @@ function isGWComplete(gw){
 // Standings computed from regular-season fixtures (GW1-35) only, counting whatever
 // GWs are complete so far. Used both for the live in-progress ladder AND, once all
 // 35 are complete, as the final seeding for the finals bracket.
-function computeStandingsThrough(throughGW){
-  const s={};
-  TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW0[t.id],form:[]};});
-  for(let gw=1;gw<=Math.min(throughGW,35);gw++){
-    const fixtures=FIXTURES[gw];if(!fixtures)continue;
-    if(!isGWComplete(gw))continue;
-    fixtures.forEach(m=>{applyResult(s,m.home,m.away,getTeamGWScore(m.home,gw),getTeamGWScore(m.away,gw));});
+// A regular-season GW that has a result: complete (locked / bonus confirmed) and not void.
+function isCountedGW(gw){return !voidGWs.has(gw)&&isGWComplete(gw);}
+
+// League points team aId earned in counted regular-season matches against bId
+// (win 3, draw 1, loss 0). Used for the head-to-head ladder tiebreak.
+function h2hPoints(aId,bId){
+  let pts=0;
+  for(let gw=1;gw<=35;gw++){
+    if(!isCountedGW(gw))continue;
+    (FIXTURES[gw]||[]).forEach(m=>{
+      if(!((m.home===aId&&m.away===bId)||(m.home===bId&&m.away===aId)))return;
+      const sA=getTeamGWScore(aId,gw),sB=getTeamGWScore(bId,gw);
+      pts+=sA>sB?3:sA===sB?1:0;
+    });
   }
-  return Object.entries(s)
-    .sort(([,a],[,b])=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a))
-    .map(([id])=>parseInt(id));
+  return pts;
 }
 
+// Single source of truth for ladder order (used by the ladder page AND finals seeding):
+// points, then points-for, then goal difference (for minus against), then head-to-head,
+// then team id so the order is always deterministic. Each stats object must carry its id.
+function cmpLadder(a,b){
+  return (b.pts-a.pts)||(b.f-a.f)||((b.f-b.a)-(a.f-a.a))||(h2hPoints(b.id,a.id)-h2hPoints(a.id,b.id))||(a.id-b.id);
+}
+
+// Regular-season stats per team (GW1-35 only), counting whatever GWs are complete so far.
+function computeStandingsStats(throughGW){
+  const s={};
+  TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW0[t.id],id:t.id,form:[]};});
+  for(let gw=1;gw<=Math.min(throughGW,35);gw++){
+    const fixtures=FIXTURES[gw];if(!fixtures)continue;
+    if(!isCountedGW(gw))continue;
+    fixtures.forEach(m=>{applyResult(s,m.home,m.away,getTeamGWScore(m.home,gw),getTeamGWScore(m.away,gw));});
+  }
+  return s;
+}
+
+function computeStandingsThrough(throughGW){
+  return Object.values(computeStandingsStats(throughGW)).sort(cmpLadder).map(t=>t.id);
+}
+
+// Void GWs have no result, so they count as "done" for the purpose of starting the finals.
 function isRegularSeasonComplete(){
-  for(let gw=1;gw<=35;gw++){if(!FIXTURES[gw]||!isGWComplete(gw))return false;}
+  for(let gw=1;gw<=35;gw++){
+    if(!FIXTURES[gw])return false;
+    if(voidGWs.has(gw))continue;
+    if(!isGWComplete(gw))return false;
+  }
   return true;
 }
 
@@ -548,7 +583,11 @@ function winnerOf(teamA,teamB,gw,seedRank){
   const sA=getTeamGWScore(teamA,gw),sB=getTeamGWScore(teamB,gw);
   if(sA>sB)return teamA;
   if(sB>sA)return teamB;
-  // Drawn knockout match — better regular-season seed advances
+  // Drawn knockout match — higher total regular-season points-for advances.
+  // Ladder seed is only a last resort if even that is level.
+  const st=computeStandingsStats(35);
+  const fA=st[teamA]?.f??0,fB=st[teamB]?.f??0;
+  if(fA!==fB)return fA>fB?teamA:teamB;
   return (seedRank.indexOf(teamA)<seedRank.indexOf(teamB))?teamA:teamB;
 }
 
@@ -649,7 +688,7 @@ function updateGWNav(){
   document.getElementById('gwNum').textContent='GW'+selectedGW;
   const ev=gwEvents[selectedGW];
   const locked=lockedGWs.has(selectedGW)||!!HISTORICAL[selectedGW];
-  let sub=ev?.is_current?'LIVE':locked?'locked':ev?.finished?'final':ev?.is_next?'upcoming':'';
+  let sub=voidGWs.has(selectedGW)?'void · no result':ev?.is_current?'LIVE':locked?'locked':ev?.finished?'final':ev?.is_next?'upcoming':'';
   if(selectedGW===defaultGW&&!sub)sub='latest';
   document.getElementById('gwSubLabel').textContent=sub;
   document.getElementById('gwPrev').disabled=selectedGW<=minGW;
@@ -949,10 +988,11 @@ function applyResult(s,hId,aId,hPts,aPts){const h=s[hId],a=s[aId];if(!h||!a)retu
 
 function renderLadder(){
   const s={};
-  TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW0[t.id],name:t.name,short:t.short,manager:t.manager,form:[]};});
+  TEAMS.forEach(t=>{s[t.id]={...STANDINGS_GW0[t.id],id:t.id,name:t.name,short:t.short,manager:t.manager,form:[]};});
   let lastCompletedGW=0;
   for(let gw=1;gw<=35;gw++){
     const fixtures=FIXTURES[gw];if(!fixtures)continue;
+    if(voidGWs.has(gw))continue;                        // void GW: no result, ladder skips it
     const dc=gwEvents[gw]?.data_checked??false;         // bonus confirmed
     const isHistorical=!!HISTORICAL[gw];               // hardcoded historical
     const isSnapshot=lockedGWs.has(gw)&&!!gwSnapshots[gw]; // snapshotted
@@ -964,7 +1004,7 @@ function renderLadder(){
   // Show clear label: only completed GWs
   const subtitle=lastCompletedGW>0?`Completed through GW${lastCompletedGW} · Bonus confirmed only`:'GW1 onwards pending';
   document.getElementById('ladderSubtitle').textContent=subtitle;
-  const sorted=Object.values(s).sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
+  const sorted=Object.values(s).sort(cmpLadder);
   const rows=sorted.map((t,i)=>{
     const pos=i+1,inF=pos<=4;
     const gd=t.f-t.a;
@@ -981,7 +1021,7 @@ function renderLadder(){
   // Finals — shows real bracket once determined, provisional preview otherwise
   const teamShort=id=>TEAMS.find(t=>t.id===id)?.short??'TBD';
   const regularDone=isRegularSeasonComplete();
-  const sorted2=[...Object.values(s)].sort((a,b)=>b.pts!==a.pts?b.pts-a.pts:b.f!==a.f?b.f-a.f:(b.f-b.a)-(a.f-a.a));
+  const sorted2=[...Object.values(s)].sort(cmpLadder);
   const provisionalTop4=sorted2.slice(0,4);
   const gw36=getGW36Fixtures(); // real once regular season complete, else null
   const gw37=getGW37Fixtures(); // real once GW36 complete, else null
@@ -1606,6 +1646,7 @@ async function loadAll(){
 
     applySquadOverrides(savedData.squads,savedData.gk_clubs);
     lockedGWs=new Set(savedData.locked_gws||[]);
+    voidGWs=new Set(savedData.void_gws||[]);
     gwSnapshots=savedData.snapshots||{};
     scoreOverrides=savedData.overrides||{};
 
@@ -1637,6 +1678,21 @@ async function loadAll(){
   }finally{if(icon)icon.classList.remove('spinning');}
 }
 
+// gwEvents (incl. the data_checked "bonus confirmed" flag) is otherwise only read once at
+// page load, so a tab left open would never see it flip. While the selected GW has finished
+// matches but no confirmed bonus yet, re-read the events so the GW can lock as soon as FPL
+// confirms bonus. Skipped in every other state to avoid downloading the big bootstrap each minute.
+async function refreshGWEventsIfWaitingForBonus(){
+  const ev=gwEvents[selectedGW];
+  if(!ev||ev.data_checked||lockedGWs.has(selectedGW)||voidGWs.has(selectedGW))return;
+  if(!rawFixtures.length||!rawFixtures.every(f=>f.finished||f.finished_provisional))return;
+  try{
+    const boot=await apiFetch('/api/bootstrap');
+    const fresh={};boot.events?.forEach(e=>{fresh[e.id]=e;});
+    if(Object.keys(fresh).length)gwEvents=fresh;
+  }catch(e){console.warn('Event refresh failed:',e);}
+}
+
 async function refreshCurrent(){
   if(!selectedGW)return;
   try{
@@ -1644,10 +1700,12 @@ async function refreshCurrent(){
     const savedData=await apiFetch('/api/squads');
     applySquadOverrides(savedData.squads,savedData.gk_clubs);
     lockedGWs=new Set(savedData.locked_gws||[]);
+    voidGWs=new Set(savedData.void_gws||[]);
     gwSnapshots=savedData.snapshots||{};
     scoreOverrides=savedData.overrides||{};
     delete gwCache[selectedGW];
     await loadGWData(selectedGW);
+    await refreshGWEventsIfWaitingForBonus();
     await checkAndSnapshotGW(selectedGW);
     updateGWNav();
     renderMatchups();
